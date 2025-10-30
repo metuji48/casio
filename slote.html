@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Angel Slot: Variable Reels RPG</title>
+<style>
+:root{ --row:108px; --reelW:150px; --gap:12px; --radius:16px; }
+*{ box-sizing:border-box; } html,body{ margin:0; height:100%; background:#000; color:#fff; font-family:system-ui, -apple-system, "Segoe UI", Roboto; }
+a{ color:#9cf; }
+
+/* Buttons */
+.btn{ cursor:pointer; border:none; border-radius:999px; padding:10px 16px; font-weight:800; background:linear-gradient(#ffe08a,#d4a648); color:#261b00; box-shadow:0 5px 0 #8a6b1a, 0 10px 24px rgba(0,0,0,.35); }
+.btn:active{ transform:translateY(2px); box-shadow:0 3px 0 #8a6b1a, 0 8px 20px rgba(0,0,0,.35); }
+.btn.sold{ background:linear-gradient(#bbb,#888); color:#222; cursor:not-allowed; }
+
+.iconbtn{ width:40px; height:40px; display:grid; place-items:center; background:#161616; border:1px solid #333; border-radius:10px; cursor:pointer; position:relative; }
+.iconbtn:hover{ border-color:#777; }
+.iconbtn.close{ background:linear-gradient(#2a0b0b,#160707); border-color:#6b2727; box-shadow:0 0 0 1px rgba(255,0,0,.08) inset; }
+.iconbtn.close span{ font-weight:900; color:#ffd6d6; text-shadow:0 0 6px rgba(255,60,60,.6); }
+.iconbtn:focus-visible{ outline:2px solid #9cf; outline-offset:2px; }
+
+.pill{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#141414; border:1px solid #333; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+.hud{ position:fixed; left:10px; right:10px; top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; z-index:20; }
+.wrap{ height:100%; display:grid; place-items:center; padding:88px 12px 24px; }
+
+.slot{ position:relative; display:flex; gap:var(--gap); padding:16px 16px 92px; background:radial-gradient(120% 120% at 50% 10%, #222 0%, #111 60%, #000); border:5px solid #454545; border-radius:var(--radius); box-shadow:0 20px 60px rgba(0,0,0,.6); }
+.banner{ position:absolute; left:16px; right:16px; top:-20px; text-align:center; font-size:26px; font-weight:900; color:#ffe08a; text-shadow:0 0 8px rgba(255,224,138,.45); }
+.viewport{ width:var(--reelW); height:calc(var(--row)*3); overflow:hidden; border:4px solid #333; border-radius:12px; background:linear-gradient(#0a0a0a,#070707); position:relative; }
+.viewport::after{ content:""; position:absolute; left:0; right:0; top:var(--row); height:var(--row); border-top:2px solid #d9a441; border-bottom:2px solid #d9a441; opacity:.5; pointer-events:none;}
+.reel .strip{ display:flex; flex-direction:column; transform:translateY(0); will-change:transform; }
+.reel.spinning .strip{ filter:blur(2.6px) brightness(1.12); }
+.speedlines{ display:none; position:absolute; inset:0; background:repeating-linear-gradient(to bottom, rgba(255,255,255,.13), rgba(255,255,255,.13) 2px, transparent 2px, transparent 8px); opacity:.12; mix-blend-mode:screen; }
+.reel.spinning .speedlines{ display:block;}
+.cell{ width:100%; height:var(--row); display:grid; place-items:center; font-size:56px; border-bottom:1px solid #1a1a1a; position:relative; }
+.cell.sticked{ outline:2px solid rgba(255,60,60,.55); outline-offset:-2px; }
+.stickerBadge{ position:absolute; right:4px; top:4px; font-size:18px; padding:1px 5px; border-radius:6px; background:rgba(185,30,30,.7); box-shadow:0 2px 6px rgba(0,0,0,.5); }
+
+/* symbols */
+.sym-seven-red{ font-weight:900; -webkit-text-stroke:2px #111; color:#ff2a2a; text-shadow:0 0 8px rgba(255,50,50,.45);}
+.sym-rainbow{ font-weight:900; -webkit-text-stroke:2px #111; color:transparent; background:conic-gradient(from 0deg, red, orange, yellow, lime, cyan, blue, magenta, red); -webkit-background-clip:text; background-clip:text; animation:hue 2.4s linear infinite; text-shadow:0 0 10px rgba(255,255,255,.35); }
+@keyframes hue{ to{ filter:hue-rotate(360deg); } }
+
+.controls{ position:absolute; left:0; right:0; bottom:10px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }
+.stopbtn{ min-width:106px; height:36px; padding:0 10px; border-radius:10px; border:1px solid #333; background:#161616; color:#fff; font:800 14px/36px system-ui; cursor:pointer; }
+.stopbtn[disabled]{ opacity:.35; cursor:not-allowed; }
+
+.lineOverlay{ position:absolute; inset:14px 14px 92px 14px; pointer-events:none; }
+.line path{ fill:none; stroke-width:3; opacity:.6; filter:drop-shadow(0 0 4px rgba(0,0,0,.6)); }
+.line.active path{ opacity:.9; stroke-width:4; }
+.line.win path{ opacity:1; stroke-width:6; animation:lineGlow 1s ease-in-out 0s 2 alternate; }
+@keyframes lineGlow{ from{ filter:drop-shadow(0 0 0 rgba(255,255,160,.0)); } to{ filter:drop-shadow(0 0 12px rgba(255,255,160,.9)); } }
+
+.topright{ position:fixed; right:10px; top:10px; display:flex; flex-direction:column; gap:8px; z-index:120; }
+.toast{ background:#141414; border:1px solid #333; border-radius:10px; padding:10px 12px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+.badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; border:1px solid #333; background:#171717; font-weight:700; }
+.cornerBadge{ position:absolute; right:-6px; top:-6px; background:#f33; color:#fff; border-radius:10px; font-size:11px; padding:1px 5px; border:1px solid #300; }
+
+/* Start */
+.start{ position:fixed; inset:0; display:grid; place-items:center; background:radial-gradient(100% 100% at 50% 40%, #191919, #0b0b0b); z-index:60; }
+.start .box{ width:min(620px,92vw); background:#0e0f10; border:1px solid #262626; border-radius:16px; padding:18px; }
+hr{ border:none; border-top:1px solid #292929; margin:10px 0; }
+
+/* Panels */
+.panel{ position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.55); z-index:70;}
+.panel.open{ display:grid; }
+.card{ width:min(960px,94vw); max-height:88vh; overflow:auto; background:#0f0f10; border:1px solid #2a2a2a; border-radius:16px; padding:18px; box-shadow:0 24px 80px rgba(0,0,0,.6); }
+.grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.grid .row{ display:contents; }
+.grid label{ background:#151515; border:1px solid #2a2a2a; border-radius:10px; padding:8px 10px; display:flex; align-items:center; gap:8px;}
+.grid input[type="number"], .grid input[type="password"], .grid input[type="text"]{ width:100%; height:36px; border-radius:8px; border:1px solid #333; background:#0c0c0c; color:#fff; font:600 14px system-ui; padding:0 8px; }
+.small{ font-size:12px; opacity:.74; }
+.right{ text-align:right; }
+
+/* Timer */
+.timepill{ gap:10px; }
+.bar{ width:160px; height:10px; border-radius:999px; background:#222; border:1px solid #333; overflow:hidden; }
+.bar>div{ height:100%; width:100%; background:linear-gradient(90deg, #27d, #2af, #2f8); transition:width .25s linear; }
+
+/* Shop & Repair */
+.shopRow{ display:flex; align-items:center; gap:10px; padding:8px; border:1px solid #2a2a2a; border-radius:10px; background:#141414; }
+.shopL{ display:flex; align-items:center; gap:10px; min-width:0; }
+.shopGlyph{ font-size:24px; }
+.shopName{ font-weight:800; }
+.shopPrice{ margin-left:auto; font-weight:800; }
+.shopItem button.btn{ padding:6px 10px; }
+
+.repairRow{ display:flex; align-items:center; gap:10px; padding:8px; border:1px solid #2a2a2a; border-radius:10px; background:#141414; }
+
+/* Username & card line-break fix */
+#start .grid label{ white-space:nowrap; }
+#start .grid label input{ flex:1; min-width:0; }
+.pill, .shopItem, .repairRow, #invArea .pill { white-space: nowrap; }
+.pill > span, .shopL, .repairRow > div { min-width: 0; }
+.pill strong, .shopL div > div:first-child, #invArea .pill strong {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#editorArea .btn { white-space: nowrap; }
+.stickerBadge { white-space: nowrap; }
+
+@media (max-width:740px){ :root{ --row:92px; --reelW:120px; } .grid{ grid-template-columns:1fr 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- ======= START ======= -->
+<div id="start" class="start">
+  <div class="box">
+    <h2 style="margin:0 0 6px; line-height:1.2;">
+      👼 Angel Slot<br>
+      <small style="font-weight:600; opacity:.85;">冒険を始める</small>
+    </h2>
+    <div class="grid" style="margin-top:8px;">
+      <label>ユーザー名 <input id="usernameInput" placeholder="例: Angel_01" type="text"></label>
+      <label>初期コイン <input type="number" id="INIT_CREDITS" min="1" value="1000"></label>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+      <button class="btn" id="startGame">開始</button>
+      <button class="btn" id="wipeOne">このユーザーを削除</button>
+      <button class="btn" id="wipeAll">全プロフィール削除</button>
+    </div>
+    <hr/>
+    <h3 style="margin:6px 0 8px;">🏅 ランキング（上位10名・匿名）</h3>
+    <div id="startRanking" class="small" style="line-height:1.8;"></div>
+  </div>
+</div>
+
+<!-- ======= HUD ======= -->
+<div class="hud">
+  <div class="pill">👤 <strong id="hudUser">—</strong> / Lv.<strong id="hudLv">1</strong> <small id="hudXp" class="small">0xp</small></div>
+  <div class="pill">💰<span id="credits">0</span></div>
+  <div class="pill">BET <input type="number" id="bet" min="1" max="5" value="3"/></div>
+  <div class="pill">有効ライン <strong id="linesInfo">1/5</strong> <small id="nextUnlock" class="small" style="margin-left:6px;">次: BET≥2</small></div>
+  <div class="pill">FREE <strong id="freeLeft">0</strong></div>
+  <div class="pill">FEVER <strong id="feverLeft">0</strong></div>
+  <div class="pill timepill"><span>⏱</span> <strong id="timeTxt">05:00</strong> <div class="bar"><div id="timeBar"></div></div></div>
+  <div class="pill" id="rankPill">🏅 Rank — / next —xp</div>
+  <button class="iconbtn" id="openEditor" title="リール編集">🎛️</button>
+  <button class="iconbtn" id="openOdds" title="当選確率">📊</button>
+  <button class="iconbtn" id="openAchievements" title="実績">🏆</button>
+  <button class="iconbtn" id="openShop" title="ショップ">🛒</button>
+  <button class="iconbtn" id="openRepair" title="修理">🧰</button>
+  <button class="iconbtn" id="giftBtn" title="プレゼント">🎁<span id="giftBadge" class="cornerBadge" style="display:none;">0</span></button>
+  <button class="iconbtn" id="openSettings" title="設定">⚙️</button>
+  <button class="iconbtn" id="openPayouts" title="配当表">📖</button>
+  <button class="iconbtn close" id="forceQuit" title="終了"><span>✕</span></button>
+</div>
+
+<!-- ======= MAIN ======= -->
+<div class="wrap">
+  <div class="slot" id="slot">
+    <div id="banner" class="banner"></div>
+    <svg id="lineOverlay" class="lineOverlay"></svg>
+    <div class="reel"><div class="viewport"><div class="strip"></div><div class="speedlines"></div></div></div>
+    <div class="reel"><div class="viewport"><div class="strip"></div><div class="speedlines"></div></div></div>
+    <div class="reel"><div class="viewport"><div class="strip"></div><div class="speedlines"></div></div></div>
+    <div class="controls">
+      <button class="btn" id="spin">SPIN (Space)</button>
+      <button class="stopbtn" id="stop1" disabled>STOP 1 (1)</button>
+      <button class="stopbtn" id="stop2" disabled>STOP 2 (2)</button>
+      <button class="stopbtn" id="stop3" disabled>STOP 3 (3)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======= POPS ======= -->
+<div class="topright" id="popArea"></div>
+
+<!-- ======= PANELS ======= -->
+<div class="panel" id="panelEditor"><div class="card"><div style="display:flex;align-items:center;gap:8px;"><h3 style="margin:0;flex:1;">リールエディタ（全12セル装着可）</h3><button class="iconbtn close" id="closeEditor" title="閉じる"><span>✕</span></button></div><p class="small">各セルにカードを装着できます。未装着セルはベース確率で抽選。装着セルは赤枠＋バッジで表示。クリックで装着／交換／取り外し。</p><div id="editorArea" class="grid" style="margin-top:8px;"></div><hr/><h4 style="margin:6px 0;">インベントリ</h4><div id="invArea" class="grid"></div></div></div>
+
+<div class="panel" id="panelOdds"><div class="card"><div style="display:flex;align-items:center;gap:8px;"><h3 style="margin:0;flex:1;">当選確率（実効分布）</h3><button class="iconbtn close" id="closeOdds" title="閉じる"><span>✕</span></button></div><p class="small">リール装着分布の平均から、現時点の近似分布（%）を表示します。</p><div id="oddsArea" class="grid"></div></div></div>
+
+<div class="panel" id="panelAchievements"><div class="card"><div style="display:flex;align-items:center;gap:8px;"><h3 style="margin:0;flex:1;">実績 / ステータス</h3><button class="iconbtn close" id="closeAchievements" title="閉じる"><span>✕</span></button></div><div id="statArea" style="margin:8px 0 6px;"></div><hr/><div id="achList" class="grid"></div></div></div>
+
+<div class="panel" id="authPanel"><div class="card" style="width:min(420px,92vw);"><h3>管理者パネル - パスワード</h3><p class="small" style="margin-top:-4px;">初期パスワードは <strong>123</strong></p><div style="display:flex;gap:8px;margin-top:8px;"><input type="password" id="authInput" placeholder="パスワード" style="flex:1;height:40px;"><button class="btn" id="authOk">開く</button><button class="iconbtn close" id="authCancel" title="閉じる"><span>✕</span></button></div></div></div>
+
+<div class="panel" id="panelSettings"><div class="card">
+  <div style="display:flex;align-items:center;gap:8px;"><h3 style="margin:0;flex:1;">設定（配当・確率・ライン・ルール）</h3><button class="btn" id="saveAll" style="padding:6px 12px;">保存</button><button class="iconbtn" id="resetAll" title="初期化">↺</button><button class="iconbtn close" id="closeSettings" title="閉じる"><span>✕</span></button></div>
+  <h4 style="margin:8px 0 6px;">配当（3つ揃い / 1ラインBET基準）</h4><div class="grid" id="payGrid"></div>
+  <h4 style="margin:16px 0 6px;">当選確率（ベース、MISS=0%）</h4><div class="grid" id="oddsGridBase"></div>
+  <p class="small">※ ウェイトは相対値。カード未装着セルはこの分布を使用。</p>
+  <h4 style="margin:16px 0 6px;">ライン解放しきい値（BET）</h4><div class="grid" id="lineGrid"></div>
+  <h4 style="margin:16px 0 6px;">ルール / フリー・フィーバー・タイマー</h4><div class="grid" id="ruleGrid"></div>
+</div></div>
+
+<div class="panel" id="panelPayouts"><div class="card"><div style="display:flex;align-items:center;gap:8px;"><h3 style="margin:0;flex:1;">配当表（3つ揃い / 1ラインBET基準）</h3><button class="iconbtn close" id="closePayouts" title="閉じる"><span>✕</span></button></div><div id="payoutsArea" style="margin-top:8px;"></div></div></div>
+
+<!-- Shop -->
+<div class="panel" id="panelShop"><div class="card">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <h3 style="margin:0;flex:1;">🛒 カードショップ</h3>
+    <button class="btn" id="refreshShop" title="更新" style="padding:6px 10px;">更新</button>
+    <button class="iconbtn close" id="closeShop" title="閉じる"><span>✕</span></button>
+  </div>
+  <p class="small">コインでカードを購入できます。各カードは在庫1つまで。更新は<strong>10c × 更新回数</strong>が必要です。</p>
+  <div id="shopArea" class="grid" style="grid-template-columns:1fr;"></div>
+</div></div>
+
+<!-- Repair -->
+<div class="panel" id="panelRepair"><div class="card">
+  <div style="display:flex;align-items:center;gap:8px;"><h3 style="margin:0;flex:1;">🧰 修理工房（1耐久=10コイン）</h3><button class="iconbtn close" id="closeRepair" title="閉じる"><span>✕</span></button></div>
+  <div id="repairArea" class="grid" style="grid-template-columns:1fr;"></div>
+</div></div>
+
+<!-- Gift (no roulette) -->
+<div class="panel" id="panelGift"><div class="card" style="width:min(520px,92vw); text-align:center;">
+  <div style="display:flex;align-items:center;gap:8px;"><h3 style="margin:0;flex:1;">🎁 プレゼントBOX</h3><button class="iconbtn close" id="closeGift" title="閉じる"><span>✕</span></button></div>
+  <p class="small">ランダムでカード or コインが当たります。<br>※レベルアップ毎に+1箱、実績でも増えます。</p>
+  <p class="small">残り: <strong id="giftLeftText">0</strong></p>
+  <div style="display:flex;gap:8px;justify-content:center;margin:10px 0 2px;">
+    <button class="btn" id="giftOpen">開ける</button>
+  </div>
+  <div id="giftResult" style="margin-top:8px;"></div>
+</div></div>
+
+<div class="panel" id="panelResult"><div class="card" style="text-align:center;"><h3>⏱ ゲーム終了</h3><p class="small" style="margin-top:-4px;">お疲れさま！ タイムアップです。</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0 10px;"><div class="pill">回転数 <strong id="resSpins">0</strong></div><div class="pill">総支出 <strong id="resSpent">0</strong></div><div class="pill">総獲得 <strong id="resWon">0</strong></div><div class="pill">最終コイン <strong id="resCredits">0</strong></div><div class="pill">🏅 現在順位 <strong id="resRank">—</strong> <span class="small">（次まで +<span id="resNextXp">—</span>xp）</span></div></div><button class="btn" id="backHome">ホームに戻る</button></div></div>
+
+<script>
+(()=> {
+/* ========= 役定義 ========= */
+function S(key, fglyph, fclass, pay, w) { return { key, fglyph, fclass, pay, baseWeight:w }; }
+const SYM = [
+  S('MISS',  '','', 0,  0),
+  S('CHERRY','🍒','', 3,  26),
+  S('LEMON', '🍋','', 3,  24),
+  S('GRAPE', '🍇','', 5,  20),
+  S('BELL',  '🔔','', 8,  14),
+  S('STAR',  '⭐','', 15, 10),
+  S('SEVEN', '7','sym-seven-red', 60, 4),
+  S('WILD',  '🃏','', 25, 2),
+];
+const KEY_INDEX = Object.fromEntries(SYM.map((s,i)=>[s.key,i]));
+
+/* ========= ライン ========= */
+const MAX_LINES=5;
+const LINE_DEF=[
+  {id:'CENTER',     color:'#ffd76a', map:[1,1,1]},
+  {id:'DIAG_TL_BR', color:'#7ad1ff', map:[0,1,2]},
+  {id:'DIAG_BL_TR', color:'#ff7ad1', map:[2,1,0]},
+  {id:'TOP',        color:'#9cff7a', map:[0,0,0]},
+  {id:'BOTTOM',     color:'#ff9c7a', map:[2,2,2]},
+];
+
+/* ========= カード ========= */
+function cardDef(code, name, distPercent, uses, icon, rarity='N', price=100, effect=null){
+  return {code, name, dist:distPercent, uses, icon:icon||'🎴', rarity, price, effect};
+}
+const CARD_LIBRARY = [
+  // N
+  cardDef('Cherry Max', 'チェリー特化', {CHERRY:48, LEMON:16, GRAPE:12, BELL:10, STAR:8, SEVEN:4, WILD:2}, 36, '🍒', 'N', 120),
+  cardDef('Lemon Max',  'レモン特化',   {LEMON:48, CHERRY:16, GRAPE:12, BELL:10, STAR:8, SEVEN:4, WILD:2}, 36, '🍋', 'N', 120),
+  cardDef('Grape Max',  'グレープ特化', {GRAPE:42, CHERRY:18, LEMON:18, BELL:10, STAR:6, SEVEN:4, WILD:2}, 36, '🍇', 'N', 130),
+  cardDef('Bell Push',  'ベル押し',     {BELL:34, CHERRY:18, LEMON:18, GRAPE:16, STAR:8, SEVEN:4, WILD:2}, 34, '🛎️', 'N', 130),
+  cardDef('Fruit Mix',  'フルーツ濃縮', {CHERRY:24, LEMON:24, GRAPE:24, BELL:18, STAR:6, SEVEN:2, WILD:2}, 40, '🥤', 'N', 100),
+  // R
+  cardDef('Star Bias',  'スター寄り',   {STAR:34, BELL:18, GRAPE:14, CHERRY:14, LEMON:14, SEVEN:4, WILD:2}, 30, '⭐', 'R', 220),
+  cardDef('Wild Bias',  'ワイルド寄り', {WILD:22, STAR:18, BELL:14, GRAPE:14, LEMON:12, CHERRY:12, SEVEN:8}, 30, '🃏', 'R', 240),
+  cardDef('Bell Drive', 'ベルドライブ', {BELL:38, GRAPE:16, CHERRY:14, LEMON:14, STAR:10, SEVEN:6, WILD:2}, 30, '🔔', 'R', 240),
+  cardDef('Sharp Cherry','鋭いチェリー', {CHERRY:56, LEMON:10, GRAPE:10, BELL:10, STAR:8, SEVEN:4, WILD:2}, 28, '🍒', 'R', 200),
+  // SR
+  cardDef('Seven Hunt',  'セブン狩り',   {SEVEN:24, STAR:20, WILD:10, BELL:14, GRAPE:12, LEMON:10, CHERRY:10}, 24, '7️⃣', 'SR', 420),
+  cardDef('Twin Wild+',  'ツイン・ワイルド+', {WILD:30, STAR:18, SEVEN:12, BELL:12, GRAPE:10, LEMON:10, CHERRY:8}, 24, '🂿', 'SR', 440),
+  cardDef('Halo Boost',  '後光強化',     {STAR:30, SEVEN:14, WILD:12, BELL:12, GRAPE:10, LEMON:11, CHERRY:11}, 24, '🕊️', 'SR', 420),
+  cardDef('Fruit Slayer','果実討伐',     {CHERRY:10, LEMON:10, GRAPE:10, BELL:18, STAR:26, SEVEN:18, WILD:8}, 22, '🗡️', 'SR', 450),
+  // UR
+  cardDef('Divine Seven+', '神威セブン+', {SEVEN:46, STAR:16, WILD:10, BELL:10, GRAPE:8, LEMON:6, CHERRY:4}, 18, '💮', 'UR', 900),
+  cardDef('Seraph Grace+', 'セラフ恩寵+', {STAR:40, SEVEN:18, WILD:14, BELL:10, GRAPE:8, LEMON:6, CHERRY:4}, 18, '👼', 'UR', 880),
+  cardDef('Chaos Joker+',  'カオス・ジョーカー+', {WILD:38, STAR:18, SEVEN:14, BELL:10, GRAPE:8, LEMON:6, CHERRY:6}, 16, '🃏', 'UR', 880),
+  cardDef('Celestial Mix+', '天空配列+', {STAR:28, SEVEN:22, WILD:20, BELL:10, GRAPE:8, LEMON:6, CHERRY:6}, 18, '🌌', 'UR', 860),
+
+  /* === GR（低確率）=== */
+  cardDef('GR_WILD_LOCK', '【GR】ワイルド100%', {WILD:100}, 12, '🂿', 'GR', 1200),
+  cardDef('GR_SEVEN_LOCK', '【GR】7ロック100%', {SEVEN:100}, 12, '7️⃣', 'GR', 1400),
+  cardDef('GR_DOUBLE_FOR_MISS', '【GR】倍化の呪印', {MISS:100}, 14, '✖️×2', 'GR', 1000, 'MISS_CELL_X2'),
+];
+
+/* ========= 基本設定 ========= */
+const CFG = {
+  STRIP_LEN: 12,
+  BASE_SPEED: 860, SPEED_VAR: 120,
+  REPEAT: 8,
+  FEVER_SPINS:6, FEVER_BOOST:1.3,
+  FREE_BASE:5, FREE_ADD:10, FREE_BIAS:0.10,
+  LINE_THRESH:[1,2,3,4,5],
+  SESSION_MINUTES:5,
+  BASE_WEIGHTS:{ MISS:0, CHERRY:26, LEMON:24, GRAPE:20, BELL:14, STAR:10, SEVEN:4, WILD:2 },
+
+  // Gift
+  GIFT_CARD_RATE: 0.7,
+  GIFT_COIN_MIN: 80,
+  GIFT_COIN_MAX: 200,
+
+  REPAIR_COST_PER_USE: 10
+};
+
+/* ========= 状態 ========= */
+let profile=null; let profiles = loadAllProfiles();
+let credits=0, bet=3, fever=0, free=0;
+let spinning=false, rafId=null, onStopped=null;
+let sessionSnapshot=null;
+const reels=[mkReelState(), mkReelState(), mkReelState()];
+let timerStarted=false, remainMs=0, timerId=null, paused=false;
+let sessSpent=0, sessWon=0, sessSpins=0;
+
+/* ========= DOM ========= */
+const $ = s=>document.querySelector(s);
+const $$ = s=>Array.from(document.querySelectorAll(s));
+const el=(t,cls,html)=>{const n=document.createElement(t); if(cls) n.className=cls; if(html!=null) n.innerHTML=html; return n;};
+const ROW = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row'));
+
+const $start=$('#start'), $usernameInput=$('#usernameInput'), $INIT=$('#INIT_CREDITS');
+const $hudUser=$('#hudUser'), $hudLv=$('#hudLv'), $hudXp=$('#hudXp');
+const $credits=$('#credits'), $bet=$('#bet'), $linesInfo=$('#linesInfo'), $nextUnlock=$('#nextUnlock');
+const $freeLeft=$('#freeLeft'), $feverLeft=$('#feverLeft');
+const $timeTxt=$('#timeTxt'), $timeBar=$('#timeBar');
+const $rankPill=$('#rankPill'); const slotEl=$('#slot'), banner=$('#banner'), lineOverlay=$('#lineOverlay');
+const spinBtn=$('#spin'), stopBtns=[$('#stop1'),$('#stop2'),$('#stop3')];
+const $popArea=$('#popArea'), $startRanking=$('#startRanking');
+const $panelEditor=$('#panelEditor'), $editorArea=$('#editorArea'), $invArea=$('#invArea');
+const $panelOdds=$('#panelOdds'), $oddsArea=$('#oddsArea'), $openOdds=$('#openOdds'), $closeOdds=$('#closeOdds');
+const $panelAchievements=$('#panelAchievements'), $achList=$('#achList'), $statArea=$('#statArea');
+const $panelSettings=$('#panelSettings'), $authPanel=$('#authPanel');
+const $authInput=$('#authInput'), $authOk=$('#authOk'), $authCancel=$('#authCancel');
+const $payGrid=$('#payGrid'), $oddsGridBase=$('#oddsGridBase');
+const $lineGrid=$('#lineGrid'), $ruleGrid=$('#ruleGrid');
+const $saveAll=$('#saveAll'), $resetAll=$('#resetAll'), $closeSettings=$('#closeSettings');
+const $panelResult=$('#panelResult'), $resSpins=$('#resSpins'), $resSpent=$('#resSpent'), $resWon=$('#resWon'), $resCredits=$('#resCredits'), $backHome=$('#backHome'), $resRank=$('#resRank'), $resNextXp=$('#resNextXp');
+const $giftBtn=$('#giftBtn'), $giftBadge=$('#giftBadge'), $giftLeftText=$('#giftLeftText'), $panelGift=$('#panelGift'), $giftOpen=$('#giftOpen'), $giftResult=$('#giftResult'), $closeGift=$('#closeGift');
+const $openEditor=$('#openEditor'), $closeEditor=$('#closeEditor');
+const $openAchievements=$('#openAchievements'), $closeAchievements=$('#closeAchievements');
+const $openSettings=$('#openSettings');
+const $openPayouts=$('#openPayouts'), $closePayouts=$('#closePayouts'), $payoutsArea=$('#payoutsArea');
+const $forceQuit=$('#forceQuit');
+const $openShop=$('#openShop'), $panelShop=$('#panelShop'), $shopArea=$('#shopArea'), $closeShop=$('#closeShop'), $refreshShop=$('#refreshShop');
+
+/* ======= LS KEYS ======= */
+const LS_PROFILES='angel_slot_profiles_v3';
+const LS_PWD='angel_admin_pwd_v1';
+const LS_MULT='angel_multipliers_v5';
+const LS_WEIGHTS='angel_weights_base_v5';
+const LS_CONF='angel_conf_v5';
+if(!localStorage.getItem(LS_PWD)) localStorage.setItem(LS_PWD,'123');
+
+/* ======= Utils ======= */
+function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+function clampMin(v,min){ return Math.max(min, parseInt(v||min,10)); }
+function maskName(n){ n=String(n||''); if(n.length<=1) return '匿名*'; if(n.length===2) return n[0]+'*'; return n[0]+'***'+n[n.length-1]; }
+function rand(){ const b=new Uint32Array(1); if(window.crypto?.getRandomValues){ crypto.getRandomValues(b); return b[0]/0x100000000; } return Math.random(); }
+function randInt(a,b){ return a + Math.floor(rand()*(b-a+1)); }
+function pickByWeights(ws){ let tot=ws.reduce((x,y)=>x+y,0); if(tot<=0){ ws=ws.map(()=>1); tot=ws.length; } let r=rand()*tot; for(let i=0;i<ws.length;i++){ if(r<ws[i]) return i; r-=ws[i]; } return ws.length-1; }
+function uid(){ return 'c'+Math.random().toString(36).slice(2,10); }
+function deepCopy(x){ return JSON.parse(JSON.stringify(x)); }
+function normName(s){ return String(s||'').trim().toLowerCase(); }
+
+/* ======= スタート ======= */
+$('#startGame').onclick = () => {
+  const inputName = String(($usernameInput.value||'')).trim();
+  if(!inputName){ alert('ユーザー名を入力してください'); return; }
+  const key = normName(inputName);
+  const exists = !!profiles[key];
+  if (exists) {
+    if(!confirm(`既存データ「${profiles[key].name||inputName}」が見つかりました。引き継ぎますか？（※コインは初期化）`)) return;
+  } else {
+    if(!confirm(`新規データ「${inputName}」を作成して始めますか？`)) return;
+  }
+  const init = clampMin($INIT.value,1);
+  startForUser(key, {init:init, displayName: inputName});
+};
+$('#wipeOne').onclick = () => {
+  const raw=($usernameInput.value||'').trim(); if(!raw) return alert('対象のユーザー名を入力してください');
+  const key = normName(raw);
+  if(!profiles[key]) return alert('そのユーザーは見つかりません');
+  if(confirm(`「${profiles[key].name||raw}」のプロフィールを削除しますか？`)){ delete profiles[key]; saveAllProfiles(); buildStartRanking(); alert('削除しました'); }
+};
+$('#wipeAll').onclick = () => {
+  if(confirm('全プロフィールを削除しますか？')){ localStorage.removeItem(LS_PROFILES); profiles={}; buildStartRanking(); alert('削除しました'); }
+};
+
+function startForUser(key, opt){
+  profile = profiles[key] || newProfile(opt.displayName || key);
+  if(!profile.name) profile.name = opt.displayName || profile.name || key;
+  profiles[key]=profile; saveAllProfiles();
+  sessionSnapshot = deepCopy(profile);
+
+  credits = opt.init; fever=0; free=0; bet=clamp(parseInt($bet.value||3,10),1,5);
+  sessSpent=0; sessWon=0; sessSpins=0;
+  timerStarted=false; remainMs = (CFG.SESSION_MINUTES||5)*60*1000; updateTimerHUD();
+
+  if(profile.reels?.length===3) for(let i=0;i<3;i++) reels[i].strip = deepCopy(profile.reels[i]);
+  rebuildAllStrips();
+
+  $hudUser.textContent = profile.name; updateLevelHUD();
+  $credits.textContent = credits; $bet.value = bet; refreshBetHUD();
+  updateGiftBadge(); buildStartRanking(); updateRankHUD();
+  $start.style.display='none';
+  toastPop('ログイン', profile.name+' で開始（カード/実績/レベル引き継ぎ）');
+}
+
+function newProfile(name){
+  return {
+    name:name, inv:[], reels:[emptyStrip(), emptyStrip(), emptyStrip()],
+    stats:{spent:0, won:0, spins:0},
+    ach:{}, level:1, xp:0,
+    giftsOpened:0, giftsFromLevel:0,
+    shopStock:null, shopRefreshCount:0
+  };
+}
+function emptyStrip(){ const a=[]; for(let i=0;i<CFG.STRIP_LEN;i++) a.push({key:'CHERRY', sticker:null}); return a; }
+
+/* ======= ランキング ======= */
+function leaderboardArray(){
+  const arr = Object.keys(profiles||{}).map(k=>{
+    const p = profiles[k]; const xp = Number(p?.xp)||0; return {key:k, name:p?.name||k, xp};
+  });
+  arr.sort((a,b)=> b.xp - a.xp);
+  return arr;
+}
+function computeMyRankAndNext(){
+  const arr = leaderboardArray();
+  const meKey = normName(profile?.name||'');
+  const idx = arr.findIndex(x=> x.key===meKey);
+  const rank = idx>=0 ? (idx+1) : arr.length+1;
+  const myXp = Number(profile?.xp||0);
+  let need = 0;
+  if(idx>0){ const nextXp = arr[idx-1].xp; need = Math.max(0, nextXp - myXp); }
+  return {rank, need};
+}
+function buildStartRanking(){
+  const arr = leaderboardArray().slice(0,10);
+  if(!$startRanking) return;
+  if(arr.length===0){ $startRanking.innerHTML='<div class="small" style="opacity:.7;">まだデータがありません</div>'; return; }
+  $startRanking.innerHTML = arr.map((x,i)=> `${i+1}. ${maskName(x.name)} <span style="opacity:.7">— ${x.xp}xp</span>`).join('<br>');
+}
+function updateRankHUD(){
+  if(!profile){ $rankPill.textContent='🏅 Rank — / next —xp'; return; }
+  const {rank, need} = computeMyRankAndNext();
+  $rankPill.textContent = `🏅 Rank ${rank} / next +${need}xp`;
+}
+
+/* ======= 終了 ======= */
+$('#forceQuit').onclick = () => {
+  if(!profile){ $start.style.display='grid'; return; }
+  const ans = prompt('終了します。\n[1] セーブして終了\n[2] セーブせず終了（このプレイのカード/実績など破棄）\n他：キャンセル\n番号を入力してください:');
+  if(ans==='1'){
+    saveProfileReels();
+    saveAllProfiles();
+    endToTitle();
+  }else if(ans==='2'){
+    const key = normName(profile.name);
+    profiles[key] = deepCopy(sessionSnapshot);
+    saveAllProfiles();
+    endToTitle();
+  }
+};
+function endToTitle(){
+  stopBtns.forEach(b=>b.disabled=true);
+  if(timerId){ clearInterval(timerId); timerId=null; }
+  paused=true; spinning=false;
+  buildStartRanking();
+  updateGiftBadge();
+  $start.style.display='grid';
+  bannerText('');
+}
+
+/* ======= SPIN ======= */
+$('#spin').onclick = spin;
+document.addEventListener('keydown', (e)=>{
+  if(e.code==='Space'){ e.preventDefault(); spin(); }
+  if(e.key==='1') expediteStop(0);
+  if(e.key==='2') expediteStop(1);
+  if(e.key==='3') expediteStop(2);
+});
+$bet.oninput = ()=>{
+  const v = parseInt($bet.value||1,10);
+  bet = clamp(isNaN(v)?1:v, 1, 5);
+  $bet.value = bet;
+  refreshBetHUD(); drawLines();
+};
+stopBtns.forEach((b,i)=>{ b.onclick = ()=>expediteStop(i); });
+
+function spin(){
+  if(spinning) return;
+  if(!timerStarted){ startTimer(); }
+  if(paused) return;
+
+  regenerateAllStripsByDistribution();
+
+  const lines=activeLines();
+  const cost = bet;
+  const isFree = free>0;
+  if(!isFree && credits < cost){ bannerText('コイン不足','hot'); beep(220,.1); return; }
+  if(!isFree){ credits -= cost; profile.stats.spent += cost; sessSpent += cost; $credits.textContent=credits; }
+  $freeLeft.textContent=free; $feverLeft.textContent=fever;
+  saveProfileReels();
+  decayStickers(1);
+
+  const t0 = drawTargetIndex(), t1 = drawTargetIndex(), t2 = drawTargetIndex();
+  const pred = predictFromTargets([t0,t1,t2], activeLines());
+  const willWin = pred.winLines.length>0;
+  const hotWin = willWin && pred.winLines.some(w=> w.key==='SEVEN'||w.key==='STAR');
+  bannerText('');
+
+  $$('.reel').forEach((reel,i)=>{
+    const strip=reel.querySelector('.strip');
+    const baseIdx = parseInt(reel.dataset.position||String(CFG.STRIP_LEN*2),10);
+    reel.classList.add('spinning');
+    reels[i].mode='spin';
+    reels[i].speed = CFG.BASE_SPEED + (rand()*2-1)*CFG.SPEED_VAR + i*40;
+    reels[i].posPx = -baseIdx*ROW;
+    reels[i].targetIdx = [t0,t1,t2][i];
+    strip.style.transition='none';
+  });
+  stopBtns.forEach(b=> b.disabled=false); spinning=true;
+
+  let stopped=0;
+  onStopped = ()=>{
+    if(++stopped===2){ if(hotWin) bannerText('激アツ!!!','hot'); else if(willWin) bannerText('REACH!','reach'); }
+    if(stopped===3){
+      spinning=false; stopBtns.forEach(b=>b.disabled=true); bannerText('');
+      const result = checkWins(activeLines());
+      highlightWinLines(result.winLines);
+
+      /* === MISS_CELL_X2 可視数を数える → 総配当に 2^n 乗算 === */
+      const x2count = countVisibleMissX2();
+      const got = settle(result, x2count); // ★ +最終配当表示は settle 内で行う
+
+      profile.stats.won += got; profile.stats.spins++; sessWon += got; sessSpins++;
+
+      const costTmp = cost;
+      gainXP(costTmp, got);
+      updateRankHUD();
+
+      if(result.pure.indexOf('SEVEN')>=0){ fever = CFG.FEVER_SPINS; bannerText('FEVER!!!','fever'); fanfare(); }
+      else if(fever>0){ fever--; }
+      if(result.pure.indexOf('STAR')>=0){
+        const add = (free>0)? CFG.FREE_ADD : CFG.FREE_BASE;
+        free += add; bannerText('FREE +'+add,'free'); beep(1046,.1); setTimeout(()=>beep(1397,.12),120);
+        unlock('HIT_STAR_FREE','スターでFREE','STAR×3でフリーゲーム獲得');
+      }else if(isFree){ free = Math.max(0, free-1); }
+
+      if(result.winLines.some(w=> w.key==='SEVEN' && !w.hadWild)) unlock('HIT_777','777!!','7×3を当てた');
+
+      saveProfilesDebounced();
+      onStopped=null;
+      setTimeout(()=> $$('#lineOverlay .line').forEach(g=>g.classList.remove('win')), 1200);
+    }
+  };
+
+  if(!rafId) rafId = requestAnimationFrame(tick);
+}
+function expediteStop(i){
+  const st=reels[i]; if(st.mode!=='spin') return;
+  const reel = $$('.reel')[i], strip=reel.querySelector('.strip');
+  const N = CFG.STRIP_LEN;
+  const idxFloat = -st.posPx / ROW;
+  const currentTop = Math.floor(idxFloat);
+  const r = (currentTop+1) % N;
+  let delta = (st.targetIdx - r + N) % N;
+  if(delta<3) delta += N;
+
+  const perfect = rand() < 0.08;
+  const slip = perfect ? 0 : randInt(1,2);
+  delta += slip;
+
+  const stopIndex = currentTop + delta + N;
+  st.mode='stopping';
+  const finalT = -stopIndex * ROW;
+
+  strip.style.transition='transform 160ms cubic-bezier(.15,.9,.2,1)';
+  strip.style.transform='translateY('+finalT+'px)';
+  const handler=()=>{
+    strip.removeEventListener('transitionend',handler);
+    const cy = Math.round(finalT/ROW) * ROW;
+    const cycleOffset = ((-cy/ROW) % N + N) % N;
+    const baseTop = (N*2)-1; const normalized = baseTop + cycleOffset;
+
+    strip.style.transition='none';
+    strip.style.transform='translateY('+(-normalized*ROW)+'px)';
+    reel.dataset.position=String(normalized); st.posPx=-normalized*ROW; st.mode='idle';
+    reel.classList.remove('spinning'); stopBtns[i].disabled=true;
+    if(onStopped) onStopped();
+  };
+  strip.addEventListener('transitionend',handler);
+}
+function tick(now){
+  if(!tick.prev) tick.prev=now;
+  const dt=Math.min(.05,(now - tick.prev)/1000); tick.prev=now;
+  let active=false;
+  for(let i=0;i<3;i++){
+    const st=reels[i], reel=$$('.reel')[i], strip=reel.querySelector('.strip');
+    if(st.mode==='spin'){ active=true; st.posPx -= st.speed*dt; strip.style.transform='translateY('+st.posPx+'px)';
+      const N=CFG.STRIP_LEN, idxFloat=-st.posPx/ROW, cycle=((Math.floor(idxFloat))%N+N)%N, baseTop=(N*2)-1, normalized=baseTop+cycle;
+      if(Math.abs(st.posPx) > ROW*N*(CFG.REPEAT-2)){ st.posPx = -normalized*ROW; reel.dataset.position=String(normalized); strip.style.transform='translateY('+st.posPx+'px)';}
+    } else if(st.mode==='stopping'){ active=true; }
+  }
+  if(active) rafId=requestAnimationFrame(tick); else{ rafId=null; tick.prev=null; }
+}
+
+/* ======= STRIPS ======= */
+function mkReelState(){ const strip=[]; for(let i=0;i<CFG.STRIP_LEN;i++) strip.push({ key:'CHERRY', sticker:null }); return { mode:'idle', posPx:0, speed:0, targetIdx:null, strip }; }
+function regenerateAllStripsByDistribution(){
+  for(let r=0;r<3;r++){
+    for(let i=0;i<CFG.STRIP_LEN;i++){
+      const cell = reels[r].strip[i];
+      const dist = cellDistribution(r,i);
+      const key = sampleByDistOrEffect(dist, cell);
+      reels[r].strip[i].key = key;
+    }
+  }
+  rebuildAllStrips();
+}
+function cellDistribution(ri, ci){
+  const cell = reels[ri].strip[ci];
+  if(cell.sticker && cell.sticker.uses>0){
+    return normalizeCardDist(cell.sticker.dist);
+  }
+  return null;
+}
+function normalizeCardDist(d){
+  const out={}; let sum=0; for(const k in d){ sum+=Number(d[k])||0; }
+  if(sum<=0) return null;
+  for(const k in d){ out[k]= (Number(d[k])||0)/sum; }
+  return out;
+}
+/* GR「倍化の呪印」：effect == MISS_CELL_X2 のセルは必ず MISS */
+function sampleByDistOrEffect(dist, cell){
+  if(cell?.sticker?.effect === 'MISS_CELL_X2') return 'MISS';
+  if(!dist){
+    const keys = Object.keys(CFG.BASE_WEIGHTS); const ws = keys.map(k=>Math.max(0, CFG.BASE_WEIGHTS[k]||0));
+    const idx = pickByWeights(ws); return keys[idx];
+  }else{
+    const keys = Object.keys(dist); const ws = keys.map(k=>Math.max(0, dist[k]||0));
+    const idx = pickByWeights(ws); return keys[idx];
+  }
+}
+
+/* ======= 当たり判定 ======= */
+function drawTargetIndex(){ return randInt(0, CFG.STRIP_LEN-1); }
+function getTripletAt(reelIdx){
+  const reel = $$('.reel')[reelIdx], pos=parseInt(reel.dataset.position||String(CFG.STRIP_LEN*2),10);
+  const N=CFG.STRIP_LEN, top=(pos)%N, cen=(pos+1)%N, bot=(pos+2)%N;
+  const strip = reels[reelIdx].strip;
+  return { top:strip[top].key, center:strip[cen].key, bottom:strip[bot].key, topCell:strip[top], cenCell:strip[cen], botCell:strip[bot] };
+}
+function lineMatch(k1,k2,k3){
+  const arr=[k1,k2,k3];
+  if(arr.indexOf('MISS')>=0) return {ok:false, key:null, hadWild:arr.indexOf('WILD')>=0};
+  const hasWild = arr.indexOf('WILD')>=0;
+  const nonW = arr.filter(k=>k!=='WILD');
+  if(nonW.length===0){ return {ok:true, key:'WILD', hadWild:true}; }
+  const first=nonW[0], ok=nonW.every(k=>k===first);
+  return {ok:ok, key: ok? first : null, hadWild:hasWild};
+}
+function checkWins(lines){
+  const A=getTripletAt(0), B=getTripletAt(1), C=getTripletAt(2);
+  const pick=(col,row)=> (col===0?A:col===1?B:C)[row===0?'top':row===1?'center':'bottom'];
+  const wins=[], pure=[];
+  for(let i=0;i<lines;i++){
+    const d=LINE_DEF[i], m=d.map;
+    const mres=lineMatch(pick(0,m[0]), pick(1,m[1]), pick(2,m[2]));
+    if(mres.ok){
+      wins.push({line:d.id, key:mres.key, hadWild:mres.hadWild, index:i});
+      if(!mres.hadWild && pure.indexOf(mres.key)<0) pure.push(mres.key);
+    }
+  }
+  return {winLines:wins, pure:pure};
+}
+function highlightWinLines(wins){
+  $$('#lineOverlay .line').forEach(g=>g.classList.remove('win'));
+  if(!wins || wins.length===0) return;
+  wins.forEach(w=>{
+    const g = $('#lineOverlay .line:nth-child('+(w.index+1)+')');
+    if(g) g.classList.add('win');
+  });
+}
+
+/* === 可視3×3の MISS_CELL_X2 カード枚数 === */
+function countVisibleMissX2(){
+  let cnt=0;
+  for(let ri=0; ri<3; ri++){
+    const reel = $$('.reel')[ri];
+    const pos=parseInt(reel.dataset.position||String(CFG.STRIP_LEN*2),10);
+    const N=CFG.STRIP_LEN;
+    const idxs=[pos%N,(pos+1)%N,(pos+2)%N];
+    for(const ci of idxs){
+      const cell = reels[ri].strip[ci];
+      if(cell?.sticker?.effect==='MISS_CELL_X2') cnt++;
+    }
+  }
+  return cnt;
+}
+
+/* ======= 配当確定 ======= */
+/* ★ 要件：x倍表示後、最終配当額も表示する */
+function settle(res, x2count){
+  let pay=0, boost=(fever>0)?CFG.FEVER_BOOST:1;
+  for(let i=0;i<res.winLines.length;i++){
+    const w=res.winLines[i]; const mul = SYM[KEY_INDEX[w.key]].pay; pay += Math.round(mul*bet*boost);
+  }
+  if(x2count>0){
+    const multi = Math.pow(2, x2count);
+    pay = Math.round(pay * multi);
+    bannerText('×'+multi+' 倍!');
+    setTimeout(()=> toastPop('最終配当', `+${pay} コイン`), 180); // 直後に最終配当も出す
+  } else if(pay>0){
+    setTimeout(()=> toastPop('配当', `+${pay} コイン`), 60);
+  }
+  if(pay>0){ animateCreditGain(pay); beep(880,.1); setTimeout(()=>beep(1175,.12),120); }
+  else beep(330,.08);
+  return pay;
+}
+function predictFromTargets(targetIdx, lines){
+  const temp = [0,1,2].map(i=>{
+    const N=CFG.STRIP_LEN, baseTop=(N*2)-1, pos=(baseTop + ((targetIdx[i]-1+N)%N));
+    return pos;
+  });
+  const mem = $$('.reel').map(r=> r.dataset.position);
+  $$('.reel').forEach((r,i)=>{ r.dataset.position = String(temp[i]); });
+  const res = checkWins(lines);
+  $$('.reel').forEach((r,i)=>{ r.dataset.position = mem[i]; });
+  return res;
+}
+
+/* ======= ライン/HUD ======= */
+function activeLines(){
+  const t = CFG.LINE_THRESH; return t.reduce((acc,thr)=> acc+(bet>=thr?1:0),0)||1;
+}
+function refreshBetHUD(){
+  const lines=activeLines(); $linesInfo.textContent=lines+'/'+MAX_LINES;
+  const sorted=CFG.LINE_THRESH.slice().sort((a,b)=>a-b); const next=(function(){ for(let i=0;i<sorted.length;i++){ if(bet<sorted[i]) return sorted[i]; } return null; })();
+  $nextUnlock.textContent = next?('次: BET≥'+next):'次: なし';
+}
+
+/* ======= 表示 ======= */
+function rebuildAllStrips(){
+  const reelsEls=$$('.reel');
+  for(let i=0;i<3;i++){
+    const stripEl = reelsEls[i].querySelector('.strip'); stripEl.innerHTML='';
+    const strip = reels[i].strip;
+    const cells=[]; for(let r=0;r<CFG.REPEAT;r++){ for(let j=0;j<strip.length;j++) cells.push(strip[j]); }
+    for(let k=0;k<cells.length;k++){
+      const cell=cells[k];
+      const s = SYM[KEY_INDEX[cell.key]];
+      // ★FIX: メイン表示は「実際に抽選された役」の絵柄のみ。カードによる置き換え表示はしない。
+      let glyph = s.fglyph||'';
+      let spanClass = s.fclass||'';
+      const cellEl=el('div','cell'+(cell.sticker?' sticked':''), '<span class="'+(spanClass||'')+'">'+glyph+'</span>');
+      if(cell.sticker){
+        // バッジには常にカードのiconを表示（視覚的に装着が分かる）
+        const badge = document.createElement('span'); badge.className='stickerBadge'; badge.textContent = cell.sticker.icon || '🎴';
+        cellEl.appendChild(badge);
+      }
+      stripEl.appendChild(cellEl);
+    }
+    const baseTop=(CFG.STRIP_LEN*2)-1; reelsEls[i].dataset.position=String(baseTop); reels[i].posPx=-baseTop*ROW;
+    stripEl.style.transform='translateY('+reels[i].posPx+'px)';
+  }
+  drawLines();
+}
+function drawLines(){
+  const viewports = Array.from(document.querySelectorAll('.reel .viewport'));
+  const w = (slotEl.clientWidth || 600) - 32;
+  const h = (viewports[0].clientHeight || (ROW*3)) + 4;
+  lineOverlay.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  lineOverlay.innerHTML = '';
+  const xStep = w/4; const xs = [xStep*1, xStep*2, xStep*3];
+  const rowH = (viewports[0].clientHeight || (ROW*3))/3; const ys = [rowH*0.5, rowH*1.5, rowH*2.5];
+  const n = activeLines();
+  for(let i=0;i<LINE_DEF.length;i++){
+    const def = LINE_DEF[i], m=def.map;
+    const d = `M ${xs[0]} ${ys[m[0]]} L ${xs[1]} ${ys[m[1]]} L ${xs[2]} ${ys[m[2]]}`;
+    const g  = document.createElementNS('http://www.w3.org/2000/svg','g'); g.classList.add('line'); if(i<n) g.classList.add('active');
+    const p  = document.createElementNS('http://www.w3.org/2000/svg','path'); p.setAttribute('d', d); p.setAttribute('stroke', def.color);
+    g.appendChild(p); lineOverlay.appendChild(g);
+  }
+}
+window.addEventListener('resize', drawLines);
+
+/* ======= ステッカー（カード） ======= */
+function decayStickers(n){
+  for(let r=0;r<reels.length;r++){
+    for(let i=0;i<CFG.STRIP_LEN;i++){
+      const cell=reels[r].strip[i];
+      if(cell.sticker){
+        if(cell.sticker.uses===6){ toastPop('カードが消耗', cell.sticker.name+'（残り耐久5）'); }
+        if(cell.sticker.uses===1){ toastPop('カードが壊れそう', cell.sticker.name+'（残り耐久1）'); }
+        cell.sticker.uses -= n;
+        if(cell.sticker.uses<=0){ toastPop('カードが壊れた', cell.sticker.name+' は外れました'); cell.sticker=null; }
+      }
+    }
+  }
+}
+
+/* ======= エディタ / インベントリ（売却・装着・取り外し） ======= */
+$('#openEditor').onclick = ()=>{ buildEditor(); $('#panelEditor').classList.add('open'); };
+$('#closeEditor').onclick = ()=>{ $('#panelEditor').classList.remove('open'); };
+
+function buildEditor(){
+  $editorArea.innerHTML='';
+  for(let r=0;r<3;r++){
+    const box = el('div','',"<h4 style=\"margin:6px 0;\">リール"+(r+1)+"</h4>");
+    const grid = el('div',''); grid.style.display='grid'; grid.style.gridTemplateColumns='repeat(6, 1fr)'; grid.style.gap='6px';
+    for(let i=0;i<CFG.STRIP_LEN;i++){
+      const cell=reels[r].strip[i];
+      const s = SYM[KEY_INDEX[cell.key]];
+      const btn = el('button','btn',''); btn.style.height='48px'; btn.style.padding='0';
+      btn.innerHTML = '<span class="'+(s.fclass||'')+'" style="font-size:22px;">'+(s.fglyph||'')+'</span>';
+      btn.title = cell.sticker? (cell.sticker.name+'（耐久'+cell.sticker.uses+'）') : '未装着（ベース確率）';
+      btn.onclick = (function(ri,ci){ return function(){ handleEditorCellClick(ri,ci); }; })(r,i);
+      grid.appendChild(btn);
+    }
+    box.appendChild(grid); $editorArea.appendChild(box);
+  }
+  rebuildInvUI();
+}
+/* ★ クリック時：未装着→装着選択／装着中→(0)取り外し（呪印不可）or(1)交換 */
+function handleEditorCellClick(ri, ci){
+  const cell = reels[ri].strip[ci];
+  if(cell.sticker){
+    const canDetach = cell.sticker.effect !== 'MISS_CELL_X2';
+    const choice = prompt(`リール${ri+1} セル${ci}\n現在: ${cell.sticker.icon||'🎴'} ${cell.sticker.name}\n[0] 取り外す${canDetach?'':'（不可：呪印）'}\n[1] 別のカードを装着\nその他: キャンセル`);
+    if(choice==='0'){
+      if(!canDetach){ alert('このカード（呪印）は取り外せません'); return; }
+      profile.inv.push(cell.sticker); cell.sticker=null; saveProfilesDebounced(); rebuildAllStrips(); rebuildInvUI(); buildEditor(); toastPop('取り外し','カードをインベントリに戻しました');
+    }else if(choice==='1'){
+      chooseCardFor(ri,ci);
+    }
+  }else{
+    chooseCardFor(ri,ci);
+  }
+}
+
+function rebuildInvUI(){
+  $invArea.innerHTML='';
+  if(profile.inv.length===0){ $invArea.innerHTML='<div class="small" style="grid-column:1/-1; opacity:.7;">カードがありません。ショップや🎁で入手できます。</div>'; return; }
+  for(let k=0;k<profile.inv.length;k++){
+    const card=profile.inv[k];
+    const price = basePriceOf(card);
+    const sell = sellPriceOf(card);
+    const tile = el('div','',`<div class="pill" style="justify-content:space-between; gap:12px;">
+      <span style="display:flex; gap:8px; min-width:0; align-items:center;">
+        <span style="font-size:20px;">${card.icon||'🎴'}</span>
+        <strong title="${card.name}">${card.name}</strong>
+        <span class="small">耐久:${card.uses}/${card.maxUses||card.uses} / R:${card.rarity}</span>
+      </span>
+      <span style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="iconbtn" title="情報">ℹ️</button>
+        <button class="btn">装着…</button>
+        <button class="btn" style="background:linear-gradient(#ffd0d0,#c76b6b);" title="売却">売却(⮟)</button>
+      </span>
+    </div>`);
+    const [infoBtn, equipBtn, sellBtn] = tile.querySelectorAll('button');
+    infoBtn.onclick = (()=> showCardInfo(card, price, sell));
+    equipBtn.onclick = (()=> chooseInstallTarget(card));
+    sellBtn.onclick = (()=> {
+      if(confirm(`${card.name}\n売却しますか？\n売却額: ${sell} コイン`)){
+        credits += sell; $credits.textContent = credits;
+        profile.inv = profile.inv.filter(x=> x!==card);
+        saveProfilesDebounced();
+        rebuildInvUI();
+        toastPop('売却', `+${sell} コイン`);
+        unlock('SELL_CARD','カード売却','カードを売却した');
+      }
+    });
+    $invArea.appendChild(tile);
+  }
+}
+function showCardInfo(card, baseP, sellP){
+  const lines = Object.entries(card.dist).map(([k,v])=>`${k}: ${v}%`).join('\n');
+  alert('カード情報\n'+(card.icon||'🎴')+' '+card.name+'\n耐久: '+card.uses+'/'+(card.maxUses||card.uses)+'\nRarity: '+card.rarity+'\n価格: '+(baseP||'-')+'\n売却: '+(sellP||'-')+'\n効果: '+(card.effect||'—')+'\n--- 分布(%) ---\n'+lines);
+}
+function chooseInstallTarget(card){
+  const r = prompt('装着先リールを選択 (1-3)'); const ri = (parseInt(r||'',10)|0)-1; if(ri<0||ri>2) return;
+  const pos = prompt('リール'+(ri+1)+'のセル位置を選択 (0-'+(CFG.STRIP_LEN-1)+')');
+  const ci = parseInt(pos||'',10); if(ci<0||ci>=CFG.STRIP_LEN) return alert('0〜11のセルを指定してください');
+  installCard(ri, ci, card);
+}
+function chooseCardFor(ri, ci){
+  if(profile.inv.length===0) return alert('インベントリにカードがありません');
+  const opts = profile.inv.map((c,idx)=> (idx+1)+': '+(c.icon||'🎴')+' '+c.name+'(耐久'+c.uses+'/'+(c.maxUses||c.uses)+',R:'+c.rarity+')').join('\n');
+  const pick = prompt('装着するカードを選択:\n'+opts);
+  const sel = (parseInt(pick||'',10)|0)-1; if(sel<0||sel>=profile.inv.length) return;
+  installCard(ri, ci, profile.inv[sel]);
+}
+function installCard(ri, ci, card){
+  const cell = reels[ri].strip[ci];
+  if(cell.sticker){ profile.inv.push(cell.sticker); }
+  cell.sticker = card;
+  profile.inv = profile.inv.filter(x=> x!==card);
+  rebuildAllStrips(); rebuildInvUI(); buildEditor(); saveProfilesDebounced();
+  toastPop('装着', 'リール'+(ri+1)+' セル'+ci+' に '+(card.icon||'🎴')+' '+card.name+' を装着');
+  unlock('INSTALL','カード装着','カードをリールに装着した');
+}
+function basePriceOf(card){
+  const base = Number(card.price||0) || ({N:120,R:240,SR:420,UR:880,GR:1200}[card.rarity]||200);
+  return base;
+}
+function sellPriceOf(card){
+  const base = basePriceOf(card);
+  const maxU = card.maxUses || card.uses || 1;
+  const ratio = Math.max(0, (card.uses||0) / maxU);
+  return Math.max(1, Math.floor((base/2) * ratio));
+}
+
+/* ======= オッズビュー ======= */
+$('#openOdds').onclick = ()=>{ buildOddsView(); $('#panelOdds').classList.add('open'); unlock('VIEW_ODDS','分布を確認','実効分布を開いた'); };
+$('#closeOdds').onclick = ()=>{ $('#panelOdds').classList.remove('open'); };
+function buildOddsView(){
+  $oddsArea.innerHTML='';
+  for(let r=0;r<3;r++){
+    const avg = aggregateReelDistribution(r);
+    const box=el('div','',"<h4 style=\"margin:6px 0;\">リール"+(r+1)+" 分布（近似%）</h4>");
+    const rows=[]; for(const k in avg){ rows.push('<tr><td>'+k+'</td><td style="text-align:right;">'+(avg[k]*100).toFixed(1)+'%</td></tr>'); }
+    const tbl=el('table','',`<tbody>${rows.join('')}</tbody>`); tbl.style.width='100%'; tbl.style.borderSpacing='6px';
+    box.appendChild(tbl); $oddsArea.appendChild(box);
+  }
+}
+function aggregateReelDistribution(ri){
+  const acc={}; for(const s of SYM) acc[s.key]=0;
+  for(let i=0;i<CFG.STRIP_LEN;i++){
+    const d = cellDistribution(ri,i);
+    const dist = d || normalizeBaseToPercent();
+    for(const k in acc){ acc[k] += (dist[k]||0); }
+  }
+  for(const k in acc){ acc[k] = acc[k]/CFG.STRIP_LEN; }
+  return acc;
+}
+function normalizeBaseToPercent(){
+  const base = CFG.BASE_WEIGHTS;
+  const sum = Object.keys(base).reduce((a,k)=> a+(base[k]||0),0) || 1;
+  const out={}; for(const k in base){ out[k]=(base[k]||0)/sum; } return out;
+}
+
+/* ======= 実績/XP ======= */
+$('#openAchievements').onclick = ()=>{ buildAchievements(); $('#panelAchievements').classList.add('open'); };
+$('#closeAchievements').onclick = ()=>{ $('#panelAchievements').classList.remove('open'); };
+function gainXP(spent, won){
+  const add = Math.max(1, Math.floor(spent*0.2 + won*0.1));
+  const beforeLv = profile.level;
+  profile.xp += add;
+  while(profile.xp >= needForLevel(profile.level+1)){
+    profile.level++;
+    profile.giftsFromLevel = (profile.giftsFromLevel||0) + 1;
+    toastPop('レベルアップ', 'Lv.'+profile.level+' おめでとう！ 🎁+1');
+    unlock('LV_UP','レベルアップ','Lv.'+profile.level+'に到達');
+  }
+  if(profile.level!==beforeLv){ updateGiftBadge(); }
+  updateLevelHUD();
+  saveProfilesDebounced();
+}
+function needForLevel(lv){ return Math.floor(lv*lv*40); }
+function updateLevelHUD(){ $hudLv.textContent = profile.level; $hudXp.textContent = profile.xp+'xp / next '+needForLevel(profile.level+1); }
+function buildAchievements(){
+  $statArea.innerHTML = `
+    <div class="pill">回転数 <strong>${profile.stats.spins}</strong></div>
+    <div class="pill">総支出 <strong>${profile.stats.spent}</strong></div>
+    <div class="pill">総獲得 <strong>${profile.stats.won}</strong></div>
+    <div class="pill">🎁 開封可能 <strong>${giftSlotsLeft()}</strong></div>
+  `;
+  const defs = [
+    ['HIT_777','777!!','7×3を当てる'],
+    ['HIT_STAR_FREE','スターでFREE','STAR×3でFREE獲得'],
+    ['GET_CARD','カードを入手','カードを初めて入手'],
+    ['INSTALL','カード装着','カードをリールに装着'],
+    ['VIEW_ODDS','分布を確認','当選確率ビューを開く'],
+    ['OPEN_GIFT','ギフト開封','🎁を開ける'],
+    ['BUY_CARD','カード購入','ショップでカード購入'],
+    ['SELL_CARD','カード売却','カードを売却'],
+    ['REPAIR','修理','耐久を修理'],
+    ['LV_UP','レベルアップ','レベルが上がる'],
+  ];
+  $achList.innerHTML='';
+  for(const d of defs){
+    const owned = !!profile.ach[d[0]];
+    const item = el('div','', `<div class="pill" style="opacity:${owned?1:.4}">${owned?'🏆':'⬜'} <strong>${d[1]}</strong> <span class="small" style="margin-left:6px;">${d[2]}</span></div>`);
+    $achList.appendChild(item);
+  }
+}
+function unlock(code, title, desc){
+  if(profile.ach[code]) return;
+  profile.ach[code]=Date.now(); saveProfilesDebounced();
+  pop(title, desc);
+  updateGiftBadge();
+}
+function getAchCount(){ return Object.keys(profile.ach||{}).length; }
+function giftSlotsLeft(){ return Math.max(0, getAchCount() + (profile.giftsFromLevel||0) - (profile.giftsOpened||0)); }
+function updateGiftBadge(){
+  const left = giftSlotsLeft();
+  if(left>0){ $giftBadge.style.display=''; $giftBadge.textContent=left; }
+  else { $giftBadge.style.display='none'; }
+}
+
+/* ======= ポップ ======= */
+function ensurePopArea(){ let n = $popArea; if(!n){ n = document.createElement('div'); n.id = 'popArea'; n.className = 'topright'; document.body.appendChild(n); } return n; }
+function pop(title, msg){ const host = ensurePopArea(); const n = document.createElement('div'); n.className = 'toast'; n.innerHTML = `<div class="badge">🏆 ${title}</div><div class="small" style="margin-top:4px;">${msg}</div>`; host.appendChild(n); setTimeout(()=> n.remove(), 3000); }
+function toastPop(title, msg){ const host = ensurePopArea(); const n = document.createElement('div'); n.className = 'toast'; n.innerHTML = `<div><strong>${title}</strong></div><div class="small">${msg}</div>`; host.appendChild(n); setTimeout(()=> n.remove(), 2200); }
+
+/* ======= 設定 ======= */
+$('#openSettings').onclick = ()=> { tryOpenSettings(); };
+$('#authOk').onclick       = ()=> { doAuth(); };
+$('#authCancel').onclick   = ()=> { $('#authPanel').classList.remove('open'); };
+$('#closeSettings').onclick= ()=> { closeSettingsPanel(); };
+$('#saveAll').onclick      = ()=> { saveAllSettings(); };
+$('#resetAll').onclick     = ()=> { resetAllSettings(); };
+
+function tryOpenSettings(){ $('#authInput').value=''; $('#authPanel').classList.add('open'); $('#authInput').focus(); }
+function doAuth(){
+  const pwd = localStorage.getItem(LS_PWD) ?? '123';
+  if ($('#authInput').value === pwd){ $('#authPanel').classList.remove('open'); openSettingsPanel(); }
+  else { bannerText('パスワードが違います','hot'); beep(220,.1); }
+}
+function openSettingsPanel(){
+  pauseTimer(true);
+  buildPayGrid(); buildWeightsGrid(); buildLineGrid(); buildRuleGrid();
+  $('#panelSettings').classList.add('open');
+}
+function closeSettingsPanel(){ $('#panelSettings').classList.remove('open'); pauseTimer(false); }
+
+function buildPayGrid(){
+  const g=$('#payGrid'); g.innerHTML='';
+  SYM.filter(s=> s.key!=='MISS').forEach(s=>{
+    const lab = labelCell(s);
+    const inp = inputNum(s.pay,1); inp.dataset.key=s.key; const unit=el('label','right','倍');
+    appendRow(g, lab, inp, unit);
+  });
+}
+function buildWeightsGrid(){
+  const g=$('#oddsGridBase'); g.innerHTML='';
+  SYM.forEach(s=>{
+    const lab = labelCell(s);
+    const inp = inputNum(CFG.BASE_WEIGHTS[s.key]||0,0); inp.dataset.key=s.key;
+    appendRow(g, lab, inp, el('label','right','ウェイト'));
+  });
+}
+function buildLineGrid(){
+  const grid=$('#lineGrid'); grid.innerHTML = '';
+  for(let i=0;i<MAX_LINES;i++){
+    const lab = el('label','',`ライン${i+1} しきい値 <input type="number" id="THRESH_${i+1}" min="1" max="5" value="${CFG.LINE_THRESH[i]||i+1}">`);
+    grid.appendChild(lab);
+  }
+}
+function buildRuleGrid(){
+  const g=$('#ruleGrid'); g.innerHTML = `
+    <label>FEVER回数 <input type="number" id="FEVER_SPINS" min="1" value="${CFG.FEVER_SPINS}"></label>
+    <label>FEVERブースト倍率 <input type="number" id="FEVER_BOOST" step="0.1" min="1" value="${CFG.FEVER_BOOST}"></label>
+    <span></span>
+    <label>フリー初回(STAR×3) <input type="number" id="FREE_SPINS_BASE" min="1" value="${CFG.FREE_BASE}"></label>
+    <label>フリー再当選 <input type="number" id="FREE_SPINS_ADD" min="1" value="${CFG.FREE_ADD}"></label>
+    <label>寄り確率(0-1) <input type="number" id="FREE_BIAS" step="0.01" min="0" max="1" value="${CFG.FREE_BIAS}"></label>
+    <label>セッション時間(分) <input type="number" id="SESSION_MINUTES" min="1" value="${CFG.SESSION_MINUTES}"></label>
+  `;
+}
+function labelCell(s){ const glyph=s.fglyph||'—'; const cls=s.fclass||''; return el('label','', '<span style="width:56px; text-align:center; font-size:24px;"><span class="'+cls+'">'+glyph+'</span></span> <strong>'+s.key+'</strong>'); }
+function inputNum(val,min){ const i=document.createElement('input'); i.type='number'; i.value=val; if(min!=null) i.min=String(min); i.style.width='100%'; i.style.height='36px'; return i; }
+function appendRow(grid, a,b,c){ const row=el('div','row',''); grid.appendChild(a); grid.appendChild(b); grid.appendChild(c); }
+
+function saveAllSettings(){
+  $('#payGrid').querySelectorAll('input[type="number"]').forEach(inp=>{ const k=inp.dataset.key; const v=Math.max(1, parseInt(inp.value||'1',10)); SYM[KEY_INDEX[k]].pay=v; });
+  localStorage.setItem(LS_MULT, JSON.stringify(Object.fromEntries(SYM.filter(s=>s.key!=='MISS').map(s=>[s.key, s.pay]))));
+
+  $('#oddsGridBase').querySelectorAll('input[type="number"]').forEach(inp=>{
+    const k=inp.dataset.key, v=Math.max(0, parseInt(inp.value||'0',10));
+    CFG.BASE_WEIGHTS[k]=v;
+  });
+  localStorage.setItem(LS_WEIGHTS, JSON.stringify(CFG.BASE_WEIGHTS));
+
+  const th=[]; for(let i=0;i<MAX_LINES;i++){ th[i]=clamp(parseInt(document.getElementById(`THRESH_${i+1}`).value||i+1,10),1,5); }
+  CFG.LINE_THRESH=th;
+
+  CFG.FEVER_SPINS = getNum('FEVER_SPINS', CFG.FEVER_SPINS,1);
+  CFG.FEVER_BOOST = getNum('FEVER_BOOST', CFG.FEVER_BOOST,1);
+  CFG.FREE_BASE   = getNum('FREE_SPINS_BASE', CFG.FREE_BASE,1);
+  CFG.FREE_ADD    = getNum('FREE_SPINS_ADD', CFG.FREE_ADD,1);
+  CFG.FREE_BIAS   = getNum('FREE_BIAS', CFG.FREE_BIAS,0,1);
+  CFG.SESSION_MINUTES = getNum('SESSION_MINUTES', CFG.SESSION_MINUTES,1);
+
+  localStorage.setItem(LS_CONF, JSON.stringify(CFG));
+  toastPop('設定','保存しました');
+  refreshBetHUD(); drawLines();
+}
+function getNum(id,def,min,max){ const x=document.getElementById(id); const v=Number(x?.value); let y=isNaN(v)?def:v; if (min != null && y < min) y = min; if (max != null && y > max) y = max; return y; }
+function resetAllSettings(){
+  if(!confirm('初期値に戻しますか？')) return;
+  CFG.BASE_WEIGHTS={ MISS:0, CHERRY:26, LEMON:24, GRAPE:20, BELL:14, STAR:10, SEVEN:4, WILD:2 };
+  const pays = { CHERRY:3, LEMON:3, GRAPE:5, BELL:8, STAR:15, SEVEN:60, WILD:25 };
+  for(const k in pays){ SYM[KEY_INDEX[k]].pay = pays[k]; }
+  CFG.LINE_THRESH=[1,2,3,4,5];
+  CFG.FEVER_SPINS=6; CFG.FEVER_BOOST=1.3; CFG.FREE_BASE=5; CFG.FREE_ADD=10; CFG.FREE_BIAS=0.10; CFG.SESSION_MINUTES=5;
+  localStorage.removeItem(LS_MULT); localStorage.removeItem(LS_WEIGHTS); localStorage.removeItem(LS_CONF);
+  openSettingsPanel();
+  toastPop('設定','初期化しました');
+}
+
+/* ======= タイマー / リザルト ======= */
+function startTimer(){ timerStarted=true; paused=false; remainMs=(CFG.SESSION_MINUTES||5)*60*1000; if(timerId) clearInterval(timerId); timerId=setInterval(tickTimer, 250); updateTimerHUD(); }
+function pauseTimer(flag){ if(!timerStarted) return; paused=!!flag; if(paused){ if(timerId){ clearInterval(timerId); timerId=null; } } else { if(!timerId){ timerId=setInterval(tickTimer, 250); } } }
+function tickTimer(){ if(paused) return; remainMs=Math.max(0, remainMs-250); updateTimerHUD(); if(remainMs<=0){ endSessionToResult(); } }
+function updateTimerHUD(){ const total=(CFG.SESSION_MINUTES||5)*60*1000; const mm=String(Math.floor(remainMs/1000/60)).padStart(2,'0'); const ss=String(Math.floor((remainMs/1000)%60)).padStart(2,'0'); $('#timeTxt').textContent=mm+':'+ss; const ratio = total>0 ? (remainMs/total) : 0; $('#timeBar').style.width=(Math.max(0,Math.min(1,ratio))*100)+'%'; }
+function endSessionToResult(){
+  stopBtns.forEach(b=>b.disabled=true);
+  if(spinning){ for(let i=0;i<3;i++){ expediteStop(i); } }
+  if(timerId){ clearInterval(timerId); timerId=null; }
+  paused=true;
+  const r = computeMyRankAndNext();
+  $resRank.textContent = '#'+r.rank; $resNextXp.textContent = r.need;
+  $resSpins.textContent=String(sessSpins);
+  $resSpent.textContent=String(sessSpent);
+  $resWon.textContent=String(sessWon);
+  $resCredits.textContent=String(credits);
+  saveProfileReels();
+  saveAllProfiles();
+  $('#panelResult').classList.add('open');
+}
+$('#backHome').onclick = ()=>{
+  saveProfileReels();
+  saveAllProfiles();
+  $('#panelResult').classList.remove('open'); $start.style.display='grid'; spinning=false; buildStartRanking();
+};
+
+/* ======= 配当表 ======= */
+$openPayouts.onclick = ()=>{ buildPayoutsTable(); $('#panelPayouts').classList.add('open'); };
+$closePayouts.onclick = ()=>{ $('#panelPayouts').classList.remove('open'); };
+function buildPayoutsTable(){
+  const rows = [];
+  const arr = SYM.filter(s=>s.key!=='MISS').slice().sort((a,b)=>b.pay - a.pay);
+  rows.push('<table style="width:100%; border-spacing:8px;"><thead><tr><th style="text-align:left;">絵柄</th><th>倍率</th></tr></thead><tbody>');
+  for(const s of arr){
+    const glyph = (s.fglyph||''), cls=(s.fclass||'');
+    rows.push('<tr><td style="font-size:28px;"><span class="'+cls+'">'+glyph+'</span> <span class="small" style="opacity:.8; margin-left:6px;">'+s.key+'</span></td><td style="text-align:center; font-weight:800;">×'+s.pay+'</td></tr>');
+  }
+  rows.push('</tbody></table>');
+  $payoutsArea.innerHTML = rows.join('');
+}
+
+/* ======= ショップ ======= */
+$openShop.onclick = ()=>{ openShop(); };
+$closeShop.onclick = ()=>{ $panelShop.classList.remove('open'); };
+$refreshShop.onclick = ()=>{ refreshShopStock(); };
+
+function openShop(){
+  buildShop(false);
+  $panelShop.classList.add('open');
+}
+function refreshShopStock(){
+  const times = (profile.shopRefreshCount||0) + 1;
+  const cost = 10 * times;
+  if(credits < cost){ bannerText('更新コイン不足 (-'+cost+')','hot'); return; }
+  credits -= cost; $credits.textContent=credits;
+  profile.shopRefreshCount = times;
+  profile.shopStock = null; // regenerate
+  buildShop(true);
+  toastPop('ショップ更新', `-${cost}c / #${times}`);
+  saveProfilesDebounced();
+}
+function buildShop(forceNew=false){
+  $shopArea.innerHTML='';
+  const times = (profile.shopRefreshCount||0) + 1;
+  $refreshShop.textContent = `更新 (-${10*times}c)`;
+
+  if(forceNew || !profile.shopStock){
+    const choices = [];
+    for(let i=0;i<5;i++) choices.push(pickRandomProto(false));
+    choices.push(pickRandomProto(true));
+    profile.shopStock = choices.map(p=>({id: uid(), proto: p, purchased:false}));
+    saveProfilesDebounced();
+  }
+  profile.shopStock.forEach((item, idx)=>{
+    const proto = item.proto;
+    const price = proto.price||basePriceOf(proto);
+    const row = el('div','shopRow shopItem',`
+      <div class="shopL">
+        <div class="shopGlyph">${proto.icon||'🎴'}</div>
+        <div>
+          <div class="shopName">${proto.name}</div>
+          <div class="small">R:${proto.rarity} / 耐久:${proto.uses} / 価格:${price}${proto.effect?' / 効果:'+proto.effect:''}</div>
+        </div>
+      </div>
+      <div class="shopPrice">💰 ${price}</div>
+      <button class="btn">${item.purchased?'SOLD':'購入'}</button>
+    `);
+    const btn = row.querySelector('button.btn');
+    if(item.purchased){ btn.classList.add('sold'); btn.disabled=true; }
+    btn.onclick = ()=>{
+      if(item.purchased) return;
+      if(credits < price){ bannerText('コイン不足','hot'); return; }
+      credits -= price; $credits.textContent=credits;
+      const card = protoToCard(proto);
+      profile.inv.push(card);
+      item.purchased = true;
+      saveProfilesDebounced(); rebuildInvUI();
+      btn.textContent='SOLD'; btn.classList.add('sold'); btn.disabled=true;
+      toastPop('購入', `${card.icon||'🎴'} ${card.name}`);
+      unlock('BUY_CARD','カード購入','ショップでカード購入');
+    };
+    $shopArea.appendChild(row);
+  });
+}
+function pickRandomProto(allowGR){
+  const wantGR = allowGR && (rand() < 0.10);
+  const pool = CARD_LIBRARY.filter(p=> wantGR ? p.rarity==='GR' : p.rarity!=='GR');
+  return pool[randInt(0, pool.length-1)];
+}
+function protoToCard(proto){
+  return { id: uid(), code: proto.code, name: proto.name, dist: proto.dist, uses: proto.uses, maxUses: proto.uses, icon: proto.icon, rarity: proto.rarity, price: proto.price, effect: proto.effect||null };
+}
+
+/* ======= 修理（装着中も可） ======= */
+const $openRepair=$('#openRepair'), $panelRepair=$('#panelRepair'), $repairArea=$('#repairArea'), $closeRepair=$('#closeRepair');
+$openRepair.onclick = ()=>{ openRepair(); };
+$closeRepair.onclick = ()=>{ $panelRepair.classList.remove('open'); };
+
+function enumerateAllCards(){
+  const list=[];
+  // inventory
+  (profile.inv||[]).forEach(c=> list.push({card:c, source:'inv'}));
+  // equipped
+  for(let ri=0;ri<3;ri++){
+    for(let ci=0;ci<CFG.STRIP_LEN;ci++){
+      const st = reels[ri].strip[ci];
+      if(st.sticker) list.push({card:st.sticker, source:'equipped', ri, ci});
+    }
+  }
+  return list;
+}
+function openRepair(){
+  buildRepair();
+  $panelRepair.classList.add('open');
+}
+function buildRepair(){
+  $repairArea.innerHTML='';
+  const all = enumerateAllCards();
+  if(all.length===0){
+    $repairArea.innerHTML='<div class="small" style="opacity:.7;">修理対象のカードがありません。</div>'; return;
+  }
+  all.forEach(({card, source, ri, ci})=>{
+    const maxU = card.maxUses || card.uses || 1;
+    const need = Math.max(0, (maxU - (card.uses||0)));
+    const where = source==='inv' ? '（手持ち）' : `（装着: R${ri+1}-C${ci}）`;
+    const row = el('div','repairRow',`
+      <div style="display:flex; gap:8px; align-items:center; min-width:0;">
+        <div style="font-size:20px;">${card.icon||'🎴'}</div>
+        <div>
+          <div class="shopName" title="${card.name}">${card.name} ${where}</div>
+          <div class="small">R:${card.rarity} / 耐久:${card.uses}/${maxU}</div>
+        </div>
+      </div>
+      <div class="small">残: ${need}</div>
+      <input type="number" min="1" max="${need}" value="${Math.min(5, need)}" style="width:88px;">
+      <div class="small">費用: <strong class="cost">0</strong></div>
+      <button class="btn">修理</button>
+    `);
+    const inp = row.querySelector('input');
+    const costEl = row.querySelector('.cost');
+    const updateCost = ()=>{
+      const n = clamp(parseInt(inp.value||'0',10), 0, need);
+      costEl.textContent = (n * CFG.REPAIR_COST_PER_USE);
+    };
+    inp.oninput = updateCost; updateCost();
+    row.querySelector('button.btn').onclick = ()=>{
+      const n = clamp(parseInt(inp.value||'0',10), 0, need);
+      const cost = n * CFG.REPAIR_COST_PER_USE;
+      if(n<=0) return;
+      if(credits < cost){ bannerText('コイン不足','hot'); return; }
+      credits -= cost; $credits.textContent = credits;
+      card.uses = Math.min(maxU, (card.uses||0) + n);
+      saveProfilesDebounced(); buildRepair(); rebuildInvUI(); buildEditor();
+      toastPop('修理', `${card.name} +${n}（-${cost}c）`);
+      unlock('REPAIR','修理','耐久を修理');
+    };
+    $repairArea.appendChild(row);
+  });
+}
+
+/* ======= ギフト ======= */
+$giftBtn.onclick = ()=>{
+  const left = giftSlotsLeft();
+  if(left<=0){ toastPop('開封できません','開封可能数がありません。レベルアップ or 実績の解除で増えます。'); return; }
+  $giftResult.innerHTML=''; $panelGift.classList.add('open'); updateGiftLeftText();
+};
+$closeGift.onclick = ()=>{ $panelGift.classList.remove('open'); };
+$giftOpen.onclick = openGift;
+function updateGiftLeftText(){ $giftLeftText.textContent = giftSlotsLeft(); }
+function openGift(){
+  const left = giftSlotsLeft();
+  if(left<=0){ updateGiftLeftText(); return; }
+  if(rand() < CFG.GIFT_CARD_RATE){
+    const proto = CARD_LIBRARY[randInt(0, CARD_LIBRARY.length-1)];
+    const card = protoToCard(proto);
+    profile.inv.push(card);
+    $giftResult.innerHTML = `<div class="pill" style="justify-content:center;">🎁 → ${card.icon||'🎴'} <strong>${card.name}</strong> <span class="small">R:${card.rarity} / 耐久:${card.uses}</span></div>`;
+    toastPop('入手', `${card.icon||'🎴'} ${card.name}`);
+  }else{
+    const coin = randInt(CFG.GIFT_COIN_MIN, CFG.GIFT_COIN_MAX);
+    credits += coin; $credits.textContent = credits;
+    $giftResult.innerHTML = `<div class="pill" style="justify-content:center;">🎁 → 💰 <strong>${coin}</strong> コイン</div>`;
+    toastPop('入手', `+${coin} コイン`);
+  }
+  profile.giftsOpened = (profile.giftsOpened||0)+1;
+  unlock('OPEN_GIFT','ギフト開封','🎁を開けた');
+  saveProfilesDebounced();
+  updateGiftLeftText(); updateGiftBadge(); rebuildInvUI();
+}
+
+/* ======= クレジット加算演出 ======= */
+function animateCreditGain(amount){
+  if(amount<=0){ $credits.textContent = credits; return; }
+  const start = credits, end = start + amount;
+  const dur = Math.min(1400, 260 + amount*4);
+  const t0 = performance.now();
+  function step(t){
+    const p = Math.min(1, (t - t0)/dur);
+    const val = Math.round(start + amount*p);
+    $credits.textContent = val;
+    if(p<1) requestAnimationFrame(step); else credits=end;
+  }
+  requestAnimationFrame(step);
+}
+
+/* ======= Helper / Persist ======= */
+function bannerText(text,kind){ if(kind===void 0) kind=''; banner.textContent=text; banner.className='banner'+(kind?(' '+kind):'');}
+function beep(freq, dur){ if(freq===void 0) freq=440; if(dur===void 0) dur=.08; const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(), g=ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.type='square'; o.frequency.value=freq; g.gain.setValueAtTime(.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(.2, ctx.currentTime+.01); g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime+dur); o.start(); o.stop(ctx.currentTime+dur+.02); }
+function fanfare(){ beep(523,.08); setTimeout(()=>beep(659,.08),100); setTimeout(()=>beep(784,.12),220); setTimeout(()=>beep(1046,.16),360); }
+
+function saveProfileReels(){ if(!profile) return; profile.reels = [reels[0].strip, reels[1].strip, reels[2].strip].map(x=> deepCopy(x)); }
+let saveTimer=null; function saveProfilesDebounced(){ if(saveTimer) clearTimeout(saveTimer); saveTimer=setTimeout(saveAllProfiles, 200); }
+function saveAllProfiles(){ localStorage.setItem(LS_PROFILES, JSON.stringify(profiles)); buildStartRanking(); }
+function loadAllProfiles(){
+  try{
+    let raw = localStorage.getItem(LS_PROFILES);
+    let obj = raw ? JSON.parse(raw) : {};
+    const mig = {}; let changed=false;
+    Object.keys(obj || {}).forEach(k=>{
+      const nk = normName(k);
+      if (!mig[nk]) mig[nk] = obj[k];
+      if (!mig[nk].name) mig[nk].name = k;
+      if (typeof mig[nk].giftsFromLevel!=='number') mig[nk].giftsFromLevel = 0;
+      if (typeof mig[nk].shopRefreshCount!=='number') mig[nk].shopRefreshCount = 0;
+      if (nk !== k) changed = true;
+      (mig[nk].inv||[]).forEach(c=>{ if(c && typeof c.maxUses!=='number') c.maxUses = c.uses; });
+    });
+    if (changed || !raw) localStorage.setItem(LS_PROFILES, JSON.stringify(mig));
+    return mig;
+  }catch(e){ console.warn('loadAllProfiles error',e); return {}; }
+}
+
+/* ======= 設定読み込み ======= */
+loadPersistedSettings();
+function loadPersistedSettings(){
+  const m = localStorage.getItem(LS_MULT); if (m){ try{ const obj=JSON.parse(m); Object.keys(obj).forEach(k=>{ if(KEY_INDEX[k]!=null) SYM[KEY_INDEX[k]].pay=obj[k]; }); }catch(e){} }
+  const c = localStorage.getItem(LS_CONF); if (c){ try{ const obj=JSON.parse(c); Object.assign(CFG, obj); }catch(e){} }
+  const wb = localStorage.getItem(LS_WEIGHTS); if (wb){ try{ CFG.BASE_WEIGHTS = Object.assign(CFG.BASE_WEIGHTS, JSON.parse(wb)); }catch(e){} }
+}
+
+/* ======= 起動時 ======= */
+rebuildAllStrips(); refreshBetHUD(); updateTimerHUD(); buildStartRanking();
+
+/* ======= ページ離脱時に最終保存 ======= */
+window.addEventListener('beforeunload', () => {
+  try { saveProfileReels(); saveAllProfiles(); } catch(_) {}
+});
+
+})();</script>
+</body>
+</html>
