@@ -53,6 +53,14 @@ a{ color:#9cf; }
 /* symbols */
 .sym-seven-red{ font-weight:900; -webkit-text-stroke:2px #111; color:#ff2a2a; text-shadow:0 0 8px rgba(255,50,50,.45);}
 
+/* ライン右端のBETバッジ数字 */
+.lineBadgeText{
+  font: 700 12px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  fill:#fff;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
 .controls{ position:absolute; left:0; right:0; bottom:10px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }
 .stopbtn{ min-width:106px; height:36px; padding:0 10px; border-radius:10px; border:1px solid #333; background:#161616; color:#fff; font:800 14px/36px system-ui; cursor:pointer; }
 .stopbtn[disabled]{ opacity:.35; cursor:not-allowed; }
@@ -319,7 +327,8 @@ const CFG = {
   FREE_BASE:5, FREE_ADD:10, FREE_BIAS:0.10,
   LINE_THRESH:[1,2,3,4,5],
   SESSION_MINUTES:5,
-  BASE_WEIGHTS:{ MISS:0, CHERRY:26, LEMON:24, GRAPE:20, BELL:14, STAR:10, SEVEN:4, WILD:2 },
+  // ★ MISSデフォルトを30に（通常時）。接待モード中は動的に0へ。
+  BASE_WEIGHTS:{ MISS:30, CHERRY:26, LEMON:24, GRAPE:20, BELL:14, STAR:10, SEVEN:4, WILD:2 },
 
   // Gift
   GIFT_CARD_RATE: 0.7,
@@ -329,6 +338,14 @@ const CFG = {
   REPAIR_COST_PER_USE: 5 // ★ 修理単価 5
 };
 
+/* ========= 接待モード ========= */
+let hostMode = false; // false:通常 / true:接待（MISS=0）
+function getEffectiveBaseWeights(){
+  const w = Object.assign({}, CFG.BASE_WEIGHTS);
+  if(hostMode) w.MISS = 0;
+  return w;
+}
+
 /* ========= 状態 ========= */
 let profile=null; let profiles = loadAllProfiles();
 let credits=0, bet=3, fever=0, free=0;
@@ -337,7 +354,6 @@ let sessionSnapshot=null;
 const reels=[mkReelState(), mkReelState(), mkReelState()];
 let timerStarted=false, remainMs=0, timerId=null, paused=false;
 let sessSpent=0, sessWon=0, sessSpins=0;
-let pendingReach=false, pendingHot=false;
 
 /* ========= DOM ========= */
 const $ = s=>document.querySelector(s);
@@ -513,6 +529,11 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='1') expediteStop(0);
   if(e.key==='2') expediteStop(1);
   if(e.key==='3') expediteStop(2);
+  if(e.key==='0'){ // ★ 接待モード トグル
+    hostMode = !hostMode;
+    toastPop('接待モード', hostMode ? 'ON（MISS=0）' : 'OFF');
+    try { if(document.querySelector('#panelOdds.open')) buildOddsView(); } catch(_){}
+  }
 });
 $bet.oninput = ()=>{
   const v = parseInt($bet.value||1,10);
@@ -539,10 +560,12 @@ function spin(){
   decayStickers(1);
 
   const t0 = drawTargetIndex(), t1 = drawTargetIndex(), t2 = drawTargetIndex();
-  const pred = predictFromTargets([t0,t1,t2], activeLines());
-  const willWin = pred.winLines.length>0;
-  const hotWin = willWin && pred.winLines.some(w=> w.key==='SEVEN'||w.key==='STAR');
-  pendingReach = willWin; pendingHot = hotWin;
+
+  // ★ リーチ/激熱は「2本目停止時に」判断するよう修正（事前の誤表示を除去）
+  // 予告情報としてターゲットだけ保存
+  reels[0].targetIdx = t0;
+  reels[1].targetIdx = t1;
+  reels[2].targetIdx = t2;
   bannerText('');
 
   $$('.reel').forEach((reel,i)=>{
@@ -552,7 +575,6 @@ function spin(){
     reels[i].mode='spin';
     reels[i].speed = CFG.BASE_SPEED + (rand()*2-1)*CFG.SPEED_VAR + i*40;
     reels[i].posPx = -baseIdx*ROW;
-    reels[i].targetIdx = [t0,t1,t2][i];
     strip.style.transition='none';
   });
   stopBtns.forEach(b=> b.disabled=false); spinning=true;
@@ -561,12 +583,16 @@ function spin(){
 
   let stopped=0;
   onStopped = ()=>{
-    if(++stopped===2){
-      // ★ 必ずリーチ表示（激アツは別でトースト）
-      if(pendingReach){
+    stopped++;
+    if(stopped===2){
+      // ★ 現在止まっていないリールを特定し、そのターゲットで勝ちが成立する場合のみ REACH 表示
+      const reachInfo = predictWinWithRemainingReel();
+      if(reachInfo.win){ // 本当に当たる時だけREACH
         bannerText('REACH!','reach'); slotEl.classList.add('fx-reach');
         setTimeout(()=> slotEl.classList.remove('fx-reach'), 900);
-        if(pendingHot) toastPop('激アツ','チャンス到来！');
+
+        // ★ 激熱条件：7 or ⭐ が2つ以上出現する当たりである
+        if(reachInfo.hot){ toastPop('激アツ','チャンス到来！'); }
       }
     }
     if(stopped===3){
@@ -628,6 +654,7 @@ function expediteStop(i){
   const handler=()=>{
     strip.removeEventListener('transitionend',handler);
     const cy = Math.round(finalT/ROW) * ROW;
+    const N=CFG.STRIP_LEN;
     const cycleOffset = ((-cy/ROW) % N + N) % N;
     const baseTop = (N*2)-1; const normalized = baseTop + cycleOffset;
 
@@ -686,7 +713,8 @@ function normalizeCardDist(d){
 function sampleByDistOrEffect(dist, cell){
   if(cell?.sticker?.effect === 'MISS_CELL_X2') return 'MISS';
   if(!dist){
-    const keys = Object.keys(CFG.BASE_WEIGHTS); const ws = keys.map(k=>Math.max(0, CFG.BASE_WEIGHTS[k]||0));
+    const base = getEffectiveBaseWeights();
+    const keys = Object.keys(base); const ws = keys.map(k=>Math.max(0, base[k]||0));
     const idx = pickByWeights(ws); return keys[idx];
   }else{
     const keys = Object.keys(dist); const ws = keys.map(k=>Math.max(0, dist[k]||0));
@@ -750,6 +778,40 @@ function countVisibleMissX2(){
   return cnt;
 }
 
+/* ======= REACH/Hot 予測（2本目停止時のみ） ======= */
+function predictWinWithRemainingReel(){
+  // 残っているリール（まだ idle でない）を探し、そのリールだけ「ターゲット位置」に一時設定して勝ちを判定
+  let remaining = -1;
+  for(let i=0;i<3;i++){ if(reels[i].mode!=='idle'){ remaining=i; break; } }
+  if(remaining<0) return {win:false, hot:false};
+
+  const mem = $$('.reel').map(r=> r.dataset.position);
+  const N = CFG.STRIP_LEN, baseTop=(N*2)-1;
+  // 残リールを「ターゲットの一つ上（可視センターがターゲット）」に仮配置
+  const target = reels[remaining].targetIdx ?? 0;
+  $$('.reel')[remaining].dataset.position = String(baseTop + ((target-1+N)%N));
+
+  const res = checkWins(activeLines());
+
+  // 7 or STAR が2つ以上含まれる勝ちがあるか（激熱）
+  let hot=false;
+  if(res.winLines.length>0){
+    const A=getTripletAt(0), B=getTripletAt(1), C=getTripletAt(2);
+    const pick=(col,row)=> (col===0?A:col===1?B:C)[row===0?'top':row===1?'center':'bottom'];
+    for(const w of res.winLines){
+      const m = LINE_DEF[w.index].map;
+      const arr=[pick(0,m[0]), pick(1,m[1]), pick(2,m[2])];
+      const cnt = arr.filter(x=> x==='SEVEN'||x==='STAR').length;
+      if(cnt>=2){ hot=true; break; }
+    }
+  }
+
+  // 位置を戻す
+  $$('.reel').forEach((r,i)=>{ r.dataset.position = mem[i]; });
+
+  return {win: res.winLines.length>0, hot};
+}
+
 /* ======= 配当確定・演出 ======= */
 function slotFx(cls, dur=1000){
   slotEl.classList.add(cls);
@@ -761,7 +823,7 @@ function payoutFx(amount){
   else if(amount < 100) slotFx('fx-mid', 900);
   else slotFx('fx-big', 1200);
 }
-/* ★ x2^n表示→最終配当トースト表示を厳格化 */
+/* ★ x2^n表示→最終配当トースト表示 */
 function settle(res, x2count){
   let pay=0, boost=(fever>0)?CFG.FEVER_BOOST:1;
   for(let i=0;i<res.winLines.length;i++){
@@ -776,19 +838,8 @@ function settle(res, x2count){
     setTimeout(()=> toastPop('配当', `+${pay} コイン`), 60);
   }
   payoutFx(pay);
-  if(pay>0){ animateCreditGain(pay); } // ビープは音源導入に伴い抑制
+  if(pay>0){ animateCreditGain(pay); }
   return pay;
-}
-function predictFromTargets(targetIdx, lines){
-  const temp = [0,1,2].map(i=>{
-    const N=CFG.STRIP_LEN, baseTop=(N*2)-1, pos=(baseTop + ((targetIdx[i]-1+N)%N));
-    return pos;
-  });
-  const mem = $$('.reel').map(r=> r.dataset.position);
-  $$('.reel').forEach((r,i)=>{ r.dataset.position = String(temp[i]); });
-  const res = checkWins(lines);
-  $$('.reel').forEach((r,i)=>{ r.dataset.position = mem[i]; });
-  return res;
 }
 
 /* ======= ライン/HUD ======= */
@@ -802,9 +853,8 @@ function refreshBetHUD(){
 }
 
 /* ======= 表示 ======= */
+// ★ 盤面セルの表示は常に「役の絵文字」。カードはバッジで表示（確率の不透明さを解消）
 function glyphForCell(cell){
-  // ★カード入れたらそのカードの絵文字をメイン表示。未装着は役絵文字。
-  if(cell?.sticker?.icon){ return cell.sticker.icon; }
   const s = SYM[KEY_INDEX[cell.key]]; return s.fglyph||'';
 }
 function rebuildAllStrips(){
@@ -816,7 +866,8 @@ function rebuildAllStrips(){
     for(let k=0;k<cells.length;k++){
       const cell=cells[k];
       const glyph = glyphForCell(cell);
-      const cellEl=el('div','cell'+(cell.sticker?' sticked':''), '<span>'+glyph+'</span>');
+      const cls = (SYM[KEY_INDEX[cell.key]].fclass||'');
+      const cellEl=el('div','cell'+(cell.sticker?' sticked':''), '<span class="'+cls+'">'+glyph+'</span>');
       if(cell.sticker){
         const badge = document.createElement('span'); badge.className='stickerBadge'; badge.textContent = cell.sticker.icon || '🎴';
         cellEl.appendChild(badge);
@@ -836,13 +887,35 @@ function drawLines(){
   lineOverlay.innerHTML = '';
   const xStep = w/4; const xs = [xStep*1, xStep*2, xStep*3];
   const rowH = (viewports[0].clientHeight || (ROW*3))/3; const ys = [rowH*0.5, rowH*1.5, rowH*2.5];
-  const n = activeLines();
+  const nActive = activeLines();
+  const marginR = 16, badgeR=12, badgeCx = w - marginR - badgeR;
+
   for(let i=0;i<LINE_DEF.length;i++){
     const def = LINE_DEF[i], m=def.map;
     const d = `M ${xs[0]} ${ys[m[0]]} L ${xs[1]} ${ys[m[1]]} L ${xs[2]} ${ys[m[2]]}`;
-    const g  = document.createElementNS('http://www.w3.org/2000/svg','g'); g.classList.add('line'); if(i<n) g.classList.add('active');
-    const p  = document.createElementNS('http://www.w3.org/2000/svg','path'); p.setAttribute('d', d); p.setAttribute('stroke', def.color);
-    g.appendChild(p); lineOverlay.appendChild(g);
+    const g  = document.createElementNS('http://www.w3.org/2000/svg','g'); g.classList.add('line'); if(i<nActive) g.classList.add('active');
+    const p  = document.createElementNS('http://www.w3.org/2000/svg','path'); p.setAttribute('d', d);
+    if(i<nActive){
+      p.setAttribute('stroke', def.color); p.setAttribute('opacity','0.9'); p.setAttribute('stroke-width','4');
+    }else{
+      p.setAttribute('stroke', '#000'); p.setAttribute('opacity','0.7'); p.setAttribute('stroke-width','3');
+    }
+    p.setAttribute('fill','none'); p.style.filter='drop-shadow(0 0 4px rgba(0,0,0,.6))';
+    g.appendChild(p);
+
+    // 右端BET解放バッジ（常時表示）
+    const cy = ys[m[2]];
+    const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circle.setAttribute('cx', badgeCx); circle.setAttribute('cy', cy);
+    circle.setAttribute('r', badgeR); circle.setAttribute('fill', def.color);
+    circle.setAttribute('stroke', 'rgba(0,0,0,.45)'); circle.setAttribute('stroke-width','2');
+    g.appendChild(circle);
+    const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x', badgeCx); label.setAttribute('y', cy); label.setAttribute('class','lineBadgeText');
+    label.textContent = String(CFG.LINE_THRESH[i] || (i+1));
+    g.appendChild(label);
+
+    lineOverlay.appendChild(g);
   }
 }
 window.addEventListener('resize', drawLines);
@@ -862,7 +935,7 @@ function decayStickers(n){
   }
 }
 
-/* ======= エディタ / インベントリ（売却・装着・取り外し） ======= */
+/* ======= エディタ / インベントリ ======= */
 $('#openEditor').onclick = ()=>{ buildEditor(); $('#panelEditor').classList.add('open'); };
 $('#closeEditor').onclick = ()=>{ $('#panelEditor').classList.remove('open'); };
 
@@ -874,7 +947,6 @@ function buildEditor(){
     for(let i=0;i<CFG.STRIP_LEN;i++){
       const cell=reels[r].strip[i];
       const btn = el('button','btn',''); btn.style.height='48px'; btn.style.padding='0';
-      // ★ 未装着セルはエディタ上では「－」表示（内部抽選は従来どおりベース分布）
       const face = cell.sticker ? (cell.sticker.icon || '🎴') : '－';
       btn.innerHTML = '<span style="font-size:22px;">'+face+'</span>';
       btn.title = cell.sticker? (cell.sticker.name+'（耐久'+cell.sticker.uses+'）') : '未装着（- 表示 / ベース確率で抽選）';
@@ -938,7 +1010,6 @@ function rebuildInvUI(){
 }
 function showCardInfo(card, baseP, sellP){
   const lines = Object.entries(card.dist).map(([k,v])=>`${k}: ${v}%`).join('\n');
-  // ★ 改行をきちんと入れて見やすく
   const txt = [
     'カード情報',
     `${card.icon||'🎴'} ${card.name}`,
@@ -973,7 +1044,6 @@ function installCard(ri, ci, card){
   unlock('INSTALL','カード装着','カードをリールに装着した');
 }
 function basePriceOf(card){
-  // 基本はプロトタイプ価格を使う（調整済1/10）。見つからない場合の保険値
   const base = Number(card.price||0) || ({N:12,R:24,SR:44,UR:88,GR:120}[card.rarity]||20);
   return base;
 }
@@ -1008,7 +1078,7 @@ function aggregateReelDistribution(ri){
   return acc;
 }
 function normalizeBaseToPercent(){
-  const base = CFG.BASE_WEIGHTS;
+  const base = getEffectiveBaseWeights();
   const sum = Object.keys(base).reduce((a,k)=> a+(base[k]||0),0) || 1;
   const out={}; for(const k in base){ out[k]=(base[k]||0)/sum; } return out;
 }
@@ -1165,7 +1235,7 @@ function saveAllSettings(){
 function getNum(id,def,min,max){ const x=document.getElementById(id); const v=Number(x?.value); let y=isNaN(v)?def:v; if (min != null && y < min) y = min; if (max != null && y > max) y = max; return y; }
 function resetAllSettings(){
   if(!confirm('初期値に戻しますか？')) return;
-  CFG.BASE_WEIGHTS={ MISS:0, CHERRY:26, LEMON:24, GRAPE:20, BELL:14, STAR:10, SEVEN:4, WILD:2 };
+  CFG.BASE_WEIGHTS={ MISS:30, CHERRY:26, LEMON:24, GRAPE:20, BELL:14, STAR:10, SEVEN:4, WILD:2 };
   const pays = { CHERRY:3, LEMON:3, GRAPE:5, BELL:8, STAR:15, SEVEN:60, WILD:25 };
   for(const k in pays){ SYM[KEY_INDEX[k]].pay = pays[k]; }
   CFG.LINE_THRESH=[1,2,3,4,5];
@@ -1412,11 +1482,10 @@ const HELP_PAGES = [
 📖 配当表…役ごとの倍率を確認できる
 ✕ 終了…途中でやめることができる`,
 `【カードその他】
-・カードは耐久制。耐久0で壊れます（残り耐久が5になったタイミングで通知）
+・カードは耐久制。耐久0で壊れる（残り耐久が5になったタイミングで通知）
 ・装着するときはリール編集画面で装着をクリックし、装着リール、番号の順に選択(左上から1(0))
-・カードは売却することもでき、コインを得ることができる。
-・同じ端末に同じユーザー名を入力することでカードとレベルの情報を引き継ぐことができる。
-
+・カードは売却することもでき、それでコインを得ることができる。
+・ユーザー名は以前と同じ端末で同じ名前で用いることでレベルとカード状況を復元できる
 
 
 `
