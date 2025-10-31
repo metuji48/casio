@@ -529,7 +529,8 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='1') expediteStop(0);
   if(e.key==='2') expediteStop(1);
   if(e.key==='3') expediteStop(2);
-  if(e.key==='-'){ // ★ 接待モード トグル
+ if(e.key==='ArrowRight'){
+    e.preventDefault();
     hostMode = !hostMode;
     toastPop('接待モード', hostMode ? 'ON（MISS=0）' : 'OFF');
     try { if(document.querySelector('#panelOdds.open')) buildOddsView(); } catch(_){}
