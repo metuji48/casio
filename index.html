@@ -532,7 +532,7 @@ document.addEventListener('keydown', (e)=>{
  if(e.key==='ArrowRight'){
     e.preventDefault();
     hostMode = !hostMode;
-    toastPop('接待モード', hostMode ? 'ON（MISS=0）' : 'OFF');
+    toastPop('a', hostMode ? 'ON（MISS=0）' : 'OFF');
     try { if(document.querySelector('#panelOdds.open')) buildOddsView(); } catch(_){}
   }
 });
